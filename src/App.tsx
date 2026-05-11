@@ -589,8 +589,14 @@ function App() {
       }
 
       for (const [sectionCode, sectionDuplicates] of Object.entries(userData.duplicates)) {
+        const friendSectionStickers = userData.stickers[sectionCode] ?? {}
+
         for (const [stickerKey, count] of Object.entries(sectionDuplicates)) {
           if (count <= 0) {
+            continue
+          }
+
+          if (friendSectionStickers[stickerKey] !== true) {
             continue
           }
 
