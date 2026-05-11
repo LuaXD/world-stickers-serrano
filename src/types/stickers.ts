@@ -28,3 +28,21 @@ export type TradeCard = {
   count: number
   label: string
 }
+
+export type TradeLine = {
+  section: string
+  sticker: number
+  quantity: number
+}
+
+export type TradeStatus = 'pending' | 'accepted' | 'declined'
+
+export type TradeRequest = {
+  id: string
+  from: string
+  to: string
+  offered: TradeLine[]
+  requested: TradeLine[]
+  status: TradeStatus
+  createdAt: number | null
+}

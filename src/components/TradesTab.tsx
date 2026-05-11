@@ -5,13 +5,15 @@ type TradesTabProps = {
   tradeCandidates: string[]
   filteredMyTradeCards: TradeCard[]
   filteredPartnerTradeCards: TradeCard[]
-  selectedOfferCards: Record<string, true>
-  selectedRequestCards: Record<string, true>
+  selectedOfferCards: Record<string, number>
+  selectedRequestCards: Record<string, number>
   selectedOfferCount: number
   selectedRequestCount: number
   onPartnerChange: (partner: string | null) => void
   onToggleOfferCard: (cardKey: string) => void
   onToggleRequestCard: (cardKey: string) => void
+  onUpdateOfferQuantity: (cardKey: string, quantity: number) => void
+  onUpdateRequestQuantity: (cardKey: string, quantity: number) => void
   onSendTradeRequest: () => void
 }
 
@@ -27,6 +29,8 @@ export default function TradesTab({
   onPartnerChange,
   onToggleOfferCard,
   onToggleRequestCard,
+  onUpdateOfferQuantity,
+  onUpdateRequestQuantity,
   onSendTradeRequest,
 }: TradesTabProps) {
   return (
@@ -68,7 +72,8 @@ export default function TradesTab({
         ) : (
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {filteredMyTradeCards.map((card) => {
-              const isSelected = selectedOfferCards[card.key] === true
+              const selectedQuantity = selectedOfferCards[card.key] ?? 0
+              const isSelected = selectedQuantity > 0
 
               return (
                 <li key={`offer-${card.key}`}>
@@ -82,8 +87,33 @@ export default function TradesTab({
                     onClick={() => onToggleOfferCard(card.key)}
                   >
                     <span>{card.label}</span>
-                    <span className="font-semibold text-zinc-200">x{card.count}</span>
+                    <span className="font-semibold text-zinc-200">
+                      {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
+                    </span>
                   </button>
+                  {isSelected ? (
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
+                        disabled={selectedQuantity <= 1}
+                        onClick={() => onUpdateOfferQuantity(card.key, selectedQuantity - 1)}
+                      >
+                        −
+                      </button>
+                      <div className="grid h-8 place-items-center rounded-lg bg-zinc-900 text-xs text-zinc-200">
+                        {selectedQuantity}
+                      </div>
+                      <button
+                        type="button"
+                        className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
+                        disabled={selectedQuantity >= card.count}
+                        onClick={() => onUpdateOfferQuantity(card.key, selectedQuantity + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : null}
                 </li>
               )
             })}
@@ -109,7 +139,8 @@ export default function TradesTab({
         ) : (
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {filteredPartnerTradeCards.map((card) => {
-              const isSelected = selectedRequestCards[card.key] === true
+              const selectedQuantity = selectedRequestCards[card.key] ?? 0
+              const isSelected = selectedQuantity > 0
 
               return (
                 <li key={`request-${card.key}`}>
@@ -123,8 +154,33 @@ export default function TradesTab({
                     onClick={() => onToggleRequestCard(card.key)}
                   >
                     <span>{card.label}</span>
-                    <span className="font-semibold text-zinc-200">x{card.count}</span>
+                    <span className="font-semibold text-zinc-200">
+                      {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
+                    </span>
                   </button>
+                  {isSelected ? (
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
+                        disabled={selectedQuantity <= 1}
+                        onClick={() => onUpdateRequestQuantity(card.key, selectedQuantity - 1)}
+                      >
+                        −
+                      </button>
+                      <div className="grid h-8 place-items-center rounded-lg bg-zinc-900 text-xs text-zinc-200">
+                        {selectedQuantity}
+                      </div>
+                      <button
+                        type="button"
+                        className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
+                        disabled={selectedQuantity >= card.count}
+                        onClick={() => onUpdateRequestQuantity(card.key, selectedQuantity + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : null}
                 </li>
               )
             })}
@@ -135,11 +191,11 @@ export default function TradesTab({
       <button
         type="button"
         className={`h-12 w-full rounded-xl text-sm font-semibold ${
-          activeTradePartner != null && selectedOfferCount > 0 && selectedRequestCount > 0
+          activeTradePartner != null && (selectedOfferCount > 0 || selectedRequestCount > 0)
             ? 'bg-emerald-600 text-white active:scale-[0.98]'
             : 'bg-zinc-800 text-zinc-500'
         }`}
-        disabled={activeTradePartner == null || selectedOfferCount === 0 || selectedRequestCount === 0}
+        disabled={activeTradePartner == null || (selectedOfferCount === 0 && selectedRequestCount === 0)}
         onClick={onSendTradeRequest}
       >
         Send trade request

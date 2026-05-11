@@ -17,6 +17,7 @@ type AlbumSectionsProps = {
   showOwnedBySection: Record<string, boolean>
   selectedUserDuplicates: UserDuplicates
   friendDuplicateOwners: Record<string, string[]>
+  recentlyMarkedKeys: Record<string, true>
   onToggleSection: (code: string) => void
   onToggleShowOwned: (code: string) => void
   onOwnerHoverStart: (meta: ActiveOwners) => void
@@ -40,6 +41,7 @@ export default function AlbumSections({
   showOwnedBySection,
   selectedUserDuplicates,
   friendDuplicateOwners,
+  recentlyMarkedKeys,
   onToggleSection,
   onToggleShowOwned,
   onOwnerHoverStart,
@@ -63,7 +65,11 @@ export default function AlbumSections({
         const showOwned = showOwnedBySection[section.code] === true
         const visibleAlbumNumbers = showOwned
           ? stickerNumbers
-          : stickerNumbers.filter((number) => ownedSet[String(number)] !== true)
+          : stickerNumbers.filter((number) => {
+              const stickerKey = String(number)
+              const mapKey = `${section.code}:${stickerKey}`
+              return ownedSet[stickerKey] !== true || recentlyMarkedKeys[mapKey] === true
+            })
 
         return (
           <article key={section.code} className="overflow-hidden rounded-2xl bg-zinc-900/85">

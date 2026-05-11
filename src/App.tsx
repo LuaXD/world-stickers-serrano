@@ -7,12 +7,14 @@ import {
   remove,
   serverTimestamp,
   set,
+  update,
   type DatabaseReference,
 } from 'firebase/database'
 
 import AlbumSections from './components/AlbumSections'
 import BottomTabs from './components/BottomTabs'
 import NamePicker from './components/NamePicker'
+import PendingTradesDropdown from './components/PendingTradesDropdown'
 import TradesTab from './components/TradesTab'
 import { database } from './lib/firebase'
 import {
@@ -24,10 +26,11 @@ import {
   getStickerNumbers,
   normalizeCode,
   parseUserRecord,
+  parseTradeRequestsSnapshot,
   parseUsernamesSnapshot,
   parseUsersSnapshot,
 } from './lib/stickerHelpers'
-import type { ActiveOwners, AppTab, SectionDefinition, UserRecord, UsersState } from './types/stickers'
+import type { ActiveOwners, AppTab, SectionDefinition, TradeRequest, UserRecord, UsersState } from './types/stickers'
 
 function getStickerRef(username: string, sectionCode: string, stickerNumber: number): DatabaseReference {
   return ref(database, `users/${username}/stickers/${sectionCode}/${stickerNumber}`)
@@ -35,6 +38,13 @@ function getStickerRef(username: string, sectionCode: string, stickerNumber: num
 
 function getDuplicateRef(username: string, sectionCode: string, stickerNumber: number): DatabaseReference {
   return ref(database, `users/${username}/duplicates/${sectionCode}/${stickerNumber}`)
+}
+
+type SelectedTradeLine = {
+  key: string
+  sectionCode: string
+  stickerNumber: number
+  quantity: number
 }
 
 function App() {
@@ -61,11 +71,14 @@ function App() {
   const [tradeStatus, setTradeStatus] = useState<string | null>(null)
   const [activeOwners, setActiveOwners] = useState<ActiveOwners | null>(null)
   const [tradePartnerSelection, setTradePartnerSelection] = useState<string | null>(null)
-  const [selectedOfferCards, setSelectedOfferCards] = useState<Record<string, true>>({})
-  const [selectedRequestCards, setSelectedRequestCards] = useState<Record<string, true>>({})
+  const [selectedOfferCards, setSelectedOfferCards] = useState<Record<string, number>>({})
+  const [selectedRequestCards, setSelectedRequestCards] = useState<Record<string, number>>({})
+  const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([])
+  const [recentlyMarkedKeys, setRecentlyMarkedKeys] = useState<Record<string, true>>({})
 
   const longPressTimerRef = useRef<number | null>(null)
   const skipNextToggleKeyRef = useRef<string | null>(null)
+  const observedTradeStatusRef = useRef<Record<string, TradeRequest['status']>>({})
 
   const activeSelectedUser = useMemo(() => {
     if (selectedUser != null && availableUsers.includes(selectedUser)) {
@@ -119,6 +132,53 @@ function App() {
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    const tradeRequestsRef = ref(database, 'tradeRequests')
+    const unsubscribe = onValue(tradeRequestsRef, (snapshot) => {
+      const nextTrades = parseTradeRequestsSnapshot(snapshot.val())
+      setTradeRequests(nextTrades)
+
+      if (activeSelectedUser == null) {
+        observedTradeStatusRef.current = {}
+        return
+      }
+
+      const previousStatuses = observedTradeStatusRef.current
+      const nextStatuses: Record<string, TradeRequest['status']> = {}
+      let nextNotification: string | null = null
+
+      for (const trade of nextTrades) {
+        if (trade.from !== activeSelectedUser && trade.to !== activeSelectedUser) {
+          continue
+        }
+
+        nextStatuses[trade.id] = trade.status
+        const previousStatus = previousStatuses[trade.id]
+
+        if (
+          previousStatus === 'pending' &&
+          (trade.status === 'accepted' || trade.status === 'declined')
+        ) {
+          const partner = trade.from === activeSelectedUser ? trade.to : trade.from
+          nextNotification =
+            trade.status === 'accepted'
+              ? `Trade with ${partner} was accepted.`
+              : `Trade with ${partner} was declined.`
+        }
+      }
+
+      observedTradeStatusRef.current = nextStatuses
+
+      if (nextNotification != null) {
+        setTradeStatus(nextNotification)
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [activeSelectedUser])
 
   useEffect(() => {
     const connectedRef = ref(database, '.info/connected')
@@ -300,17 +360,61 @@ function App() {
     })
   }, [partnerTradeCards, searchTerm])
 
-  const selectedOfferTradeCards = useMemo(() => {
-    return myTradeCards.filter((card) => {
-      return selectedOfferCards[card.key] === true
-    })
+  const selectedOfferTradeCards = useMemo<SelectedTradeLine[]>(() => {
+    return myTradeCards
+      .map((card) => {
+        const quantity = selectedOfferCards[card.key] ?? 0
+        if (quantity <= 0) {
+          return null
+        }
+
+        return {
+          key: card.key,
+          sectionCode: card.sectionCode,
+          stickerNumber: card.stickerNumber,
+          quantity: Math.min(quantity, card.count),
+        }
+      })
+      .filter((line): line is SelectedTradeLine => line != null)
   }, [myTradeCards, selectedOfferCards])
 
-  const selectedRequestTradeCards = useMemo(() => {
-    return partnerTradeCards.filter((card) => {
-      return selectedRequestCards[card.key] === true
-    })
+  const selectedRequestTradeCards = useMemo<SelectedTradeLine[]>(() => {
+    return partnerTradeCards
+      .map((card) => {
+        const quantity = selectedRequestCards[card.key] ?? 0
+        if (quantity <= 0) {
+          return null
+        }
+
+        return {
+          key: card.key,
+          sectionCode: card.sectionCode,
+          stickerNumber: card.stickerNumber,
+          quantity: Math.min(quantity, card.count),
+        }
+      })
+      .filter((line): line is SelectedTradeLine => line != null)
   }, [partnerTradeCards, selectedRequestCards])
+
+  const myTradeCardCountByKey = useMemo(() => {
+    const counts: Record<string, number> = {}
+
+    for (const card of myTradeCards) {
+      counts[card.key] = card.count
+    }
+
+    return counts
+  }, [myTradeCards])
+
+  const partnerTradeCardCountByKey = useMemo(() => {
+    const counts: Record<string, number> = {}
+
+    for (const card of partnerTradeCards) {
+      counts[card.key] = card.count
+    }
+
+    return counts
+  }, [partnerTradeCards])
 
   const ownedCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -395,6 +499,20 @@ function App() {
     return friendDuplicateOwners[activeOwners.key] ?? []
   }, [activeOwners, friendDuplicateOwners])
 
+  const pendingTrades = useMemo(() => {
+    if (activeSelectedUser == null) {
+      return []
+    }
+
+    return tradeRequests.filter((trade) => {
+      if (trade.status !== 'pending') {
+        return false
+      }
+
+      return trade.from === activeSelectedUser || trade.to === activeSelectedUser
+    })
+  }, [activeSelectedUser, tradeRequests])
+
   function setUserRecord(userName: string, updater: (current: UserRecord) => UserRecord): void {
     setUsers((previousUsers) => {
       const current = previousUsers[userName] ?? { stickers: {}, duplicates: {} }
@@ -402,6 +520,48 @@ function App() {
         ...previousUsers,
         [userName]: updater(current),
       }
+    })
+  }
+
+  function clearRecentlyMarked(stickerMapKey: string): void {
+    setRecentlyMarkedKeys((previous) => {
+      if (previous[stickerMapKey] == null) {
+        return previous
+      }
+
+      const next = { ...previous }
+      delete next[stickerMapKey]
+      return next
+    })
+  }
+
+  function markRecentlyForUndo(stickerMapKey: string): void {
+    setRecentlyMarkedKeys((previous) => ({
+      ...previous,
+      [stickerMapKey]: true,
+    }))
+  }
+
+  function clearRecentlyMarkedForSection(sectionCode: string): void {
+    const keyPrefix = `${sectionCode}:`
+
+    setRecentlyMarkedKeys((previous) => {
+      let hasChanged = false
+      const next: Record<string, true> = {}
+
+      for (const [key, value] of Object.entries(previous)) {
+        if (key.startsWith(keyPrefix)) {
+          hasChanged = true
+          continue
+        }
+        next[key] = value
+      }
+
+      if (!hasChanged) {
+        return previous
+      }
+
+      return next
     })
   }
 
@@ -413,11 +573,14 @@ function App() {
     setError(null)
     const normalizedCode = normalizeCode(sectionCode)
     const stickerKey = String(stickerNumber)
-    const isOwned = selectedUserStickers[normalizedCode]?.[stickerKey] === true
+    const stickerMapKey = `${normalizedCode}:${stickerKey}`
+    const currentUserRecord = users[activeSelectedUser] ?? { stickers: {}, duplicates: {} }
+    const currentSectionStickers = currentUserRecord.stickers[normalizedCode] ?? {}
+    const isOwned = currentSectionStickers[stickerKey] === true
 
     setUserRecord(activeSelectedUser, (current) => {
       const nextStickers = { ...current.stickers }
-      const nextSectionStickers = { ...(nextStickers[normalizedCode] ?? {}) }
+      const nextSectionStickers = { ...(current.stickers[normalizedCode] ?? {}) }
 
       if (isOwned) {
         delete nextSectionStickers[stickerKey]
@@ -437,6 +600,12 @@ function App() {
       }
     })
 
+    if (isOwned) {
+      clearRecentlyMarked(stickerMapKey)
+    } else {
+      markRecentlyForUndo(stickerMapKey)
+    }
+
     try {
       if (isOwned) {
         await remove(getStickerRef(activeSelectedUser, normalizedCode, stickerNumber))
@@ -444,6 +613,7 @@ function App() {
         await set(getStickerRef(activeSelectedUser, normalizedCode, stickerNumber), true)
       }
     } catch {
+      clearRecentlyMarked(stickerMapKey)
       setError('Unable to update sticker right now.')
       const userRef = ref(database, `users/${activeSelectedUser}`)
       void get(userRef).then((snapshot) => {
@@ -505,6 +675,10 @@ function App() {
   }
 
   function handleToggleSection(code: string): void {
+    if (expandedSections[code] === true) {
+      clearRecentlyMarkedForSection(code)
+    }
+
     setExpandedSections((previous) => {
       const currentValue = previous[code]
       return {
@@ -515,6 +689,8 @@ function App() {
   }
 
   function handleToggleShowOwned(code: string): void {
+    clearRecentlyMarkedForSection(code)
+
     setShowOwnedBySection((previous) => {
       const currentValue = previous[code]
       return {
@@ -585,16 +761,29 @@ function App() {
 
   function handleToggleTradeCard(
     key: string,
-    setSelection: Dispatch<SetStateAction<Record<string, true>>>,
+    setSelection: Dispatch<SetStateAction<Record<string, number>>>,
   ): void {
     setSelection((previous) => {
       const next = { ...previous }
-      if (next[key] === true) {
+      if ((next[key] ?? 0) > 0) {
         delete next[key]
       } else {
-        next[key] = true
+        next[key] = 1
       }
 
+      return next
+    })
+  }
+
+  function handleUpdateTradeQuantity(
+    key: string,
+    quantity: number,
+    maxQuantity: number,
+    setSelection: Dispatch<SetStateAction<Record<string, number>>>,
+  ): void {
+    setSelection((previous) => {
+      const normalizedQuantity = Math.max(1, Math.min(maxQuantity, quantity))
+      const next = { ...previous, [key]: normalizedQuantity }
       return next
     })
   }
@@ -604,8 +793,8 @@ function App() {
       return
     }
 
-    if (selectedOfferTradeCards.length === 0 || selectedRequestTradeCards.length === 0) {
-      setTradeStatus('Pick at least one sticker to offer and one to request.')
+    if (selectedOfferTradeCards.length === 0 && selectedRequestTradeCards.length === 0) {
+      setTradeStatus('Pick at least one sticker to offer or request.')
       return
     }
 
@@ -620,12 +809,12 @@ function App() {
         offered: selectedOfferTradeCards.map((card) => ({
           section: card.sectionCode,
           sticker: card.stickerNumber,
-          available: card.count,
+          quantity: card.quantity,
         })),
         requested: selectedRequestTradeCards.map((card) => ({
           section: card.sectionCode,
           sticker: card.stickerNumber,
-          available: card.count,
+          quantity: card.quantity,
         })),
         status: 'pending',
         createdAt: serverTimestamp(),
@@ -637,6 +826,191 @@ function App() {
     } catch {
       setTradeStatus('Could not send trade request right now.')
     }
+  }
+
+  function cloneUserRecord(record: UserRecord): UserRecord {
+    const stickers: UserRecord['stickers'] = {}
+    const duplicates: UserRecord['duplicates'] = {}
+
+    for (const [sectionCode, sectionStickers] of Object.entries(record.stickers)) {
+      stickers[sectionCode] = { ...sectionStickers }
+    }
+
+    for (const [sectionCode, sectionDuplicates] of Object.entries(record.duplicates)) {
+      duplicates[sectionCode] = { ...sectionDuplicates }
+    }
+
+    return { stickers, duplicates }
+  }
+
+  function getDuplicateAmount(record: UserRecord, sectionCode: string, stickerNumber: number): number {
+    return record.duplicates[sectionCode]?.[String(stickerNumber)] ?? 0
+  }
+
+  function setDuplicateAmount(
+    record: UserRecord,
+    sectionCode: string,
+    stickerNumber: number,
+    amount: number,
+  ): void {
+    const stickerKey = String(stickerNumber)
+    const sectionDuplicates = { ...(record.duplicates[sectionCode] ?? {}) }
+
+    if (amount <= 0) {
+      delete sectionDuplicates[stickerKey]
+    } else {
+      sectionDuplicates[stickerKey] = amount
+    }
+
+    if (Object.keys(sectionDuplicates).length === 0) {
+      delete record.duplicates[sectionCode]
+    } else {
+      record.duplicates[sectionCode] = sectionDuplicates
+    }
+  }
+
+  function markStickerOwned(record: UserRecord, sectionCode: string, stickerNumber: number): void {
+    const stickerKey = String(stickerNumber)
+    const sectionStickers = { ...(record.stickers[sectionCode] ?? {}) }
+    sectionStickers[stickerKey] = true
+    record.stickers[sectionCode] = sectionStickers
+  }
+
+  function canSendLines(record: UserRecord, lines: SelectedTradeLine[]): boolean {
+    for (const line of lines) {
+      const available = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
+      if (available < line.quantity) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  function applyOutgoingLines(record: UserRecord, lines: SelectedTradeLine[]): void {
+    for (const line of lines) {
+      const available = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
+      const nextAmount = available - line.quantity
+      setDuplicateAmount(record, line.sectionCode, line.stickerNumber, nextAmount)
+    }
+  }
+
+  function applyIncomingLines(record: UserRecord, lines: SelectedTradeLine[]): void {
+    for (const line of lines) {
+      const stickerKey = String(line.stickerNumber)
+      const alreadyOwned = record.stickers[line.sectionCode]?.[stickerKey] === true
+
+      if (alreadyOwned) {
+        const duplicateAmount = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
+        setDuplicateAmount(
+          record,
+          line.sectionCode,
+          line.stickerNumber,
+          duplicateAmount + line.quantity,
+        )
+        continue
+      }
+
+      markStickerOwned(record, line.sectionCode, line.stickerNumber)
+
+      if (line.quantity > 1) {
+        const duplicateAmount = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
+        setDuplicateAmount(
+          record,
+          line.sectionCode,
+          line.stickerNumber,
+          duplicateAmount + line.quantity - 1,
+        )
+      }
+    }
+  }
+
+  async function handleAcceptTradeRequest(tradeId: string): Promise<void> {
+    if (activeSelectedUser == null) {
+      return
+    }
+
+    const selectedTrade = tradeRequests.find((trade) => trade.id === tradeId)
+    if (selectedTrade == null || selectedTrade.status !== 'pending') {
+      return
+    }
+
+    if (selectedTrade.to !== activeSelectedUser) {
+      setTradeStatus('Only the receiver can confirm this trade.')
+      return
+    }
+
+    const offeredLines: SelectedTradeLine[] = selectedTrade.offered.map((line) => ({
+      key: `${line.section}:${line.sticker}`,
+      sectionCode: line.section,
+      stickerNumber: line.sticker,
+      quantity: line.quantity,
+    }))
+    const requestedLines: SelectedTradeLine[] = selectedTrade.requested.map((line) => ({
+      key: `${line.section}:${line.sticker}`,
+      sectionCode: line.section,
+      stickerNumber: line.sticker,
+      quantity: line.quantity,
+    }))
+
+    try {
+      const usersSnapshot = await get(ref(database, 'users'))
+      const latestUsers = parseUsersSnapshot(usersSnapshot.val())
+      const fromRecord = cloneUserRecord(latestUsers[selectedTrade.from] ?? { stickers: {}, duplicates: {} })
+      const toRecord = cloneUserRecord(latestUsers[selectedTrade.to] ?? { stickers: {}, duplicates: {} })
+
+      if (!canSendLines(fromRecord, offeredLines) || !canSendLines(toRecord, requestedLines)) {
+        setTradeStatus('Trade quantities changed. Please review and resend.')
+        return
+      }
+
+      applyOutgoingLines(fromRecord, offeredLines)
+      applyIncomingLines(toRecord, offeredLines)
+      applyOutgoingLines(toRecord, requestedLines)
+      applyIncomingLines(fromRecord, requestedLines)
+
+      await set(ref(database, `users/${selectedTrade.from}`), fromRecord)
+      await set(ref(database, `users/${selectedTrade.to}`), toRecord)
+      await update(ref(database, `tradeRequests/${tradeId}`), {
+        status: 'accepted',
+        resolvedAt: serverTimestamp(),
+        resolvedBy: activeSelectedUser,
+      })
+      setTradeStatus('Trade accepted and inventories updated.')
+    } catch {
+      setTradeStatus('Could not confirm trade right now.')
+    }
+  }
+
+  async function handleDeclineTradeRequest(tradeId: string): Promise<void> {
+    if (activeSelectedUser == null) {
+      return
+    }
+
+    const selectedTrade = tradeRequests.find((trade) => trade.id === tradeId)
+    if (selectedTrade == null || selectedTrade.status !== 'pending') {
+      return
+    }
+
+    if (selectedTrade.to !== activeSelectedUser) {
+      setTradeStatus('Only the receiver can decline this trade.')
+      return
+    }
+
+    try {
+      await update(ref(database, `tradeRequests/${tradeId}`), {
+        status: 'declined',
+        resolvedAt: serverTimestamp(),
+        resolvedBy: activeSelectedUser,
+      })
+      setTradeStatus('Trade declined.')
+    } catch {
+      setTradeStatus('Could not decline trade right now.')
+    }
+  }
+
+  function formatPendingTradeLine(sectionCode: string, stickerNumber: number, quantity: number): string {
+    return `${sectionCode} ${formatStickerLabel(sectionCode, stickerNumber)} x${quantity}`
   }
 
   if (activeSelectedUser == null) {
@@ -741,6 +1115,19 @@ function App() {
             {tradeStatus}
           </p>
         )}
+        {pendingTrades.length > 0 ? (
+          <PendingTradesDropdown
+            activeUsername={activeSelectedUser}
+            trades={pendingTrades}
+            formatTradeLine={formatPendingTradeLine}
+            onAccept={(tradeId) => {
+              void handleAcceptTradeRequest(tradeId)
+            }}
+            onDecline={(tradeId) => {
+              void handleDeclineTradeRequest(tradeId)
+            }}
+          />
+        ) : null}
 
         {activeTab === 'trades' ? (
           <TradesTab
@@ -762,6 +1149,14 @@ function App() {
             onToggleRequestCard={(cardKey) => {
               handleToggleTradeCard(cardKey, setSelectedRequestCards)
             }}
+            onUpdateOfferQuantity={(cardKey, quantity) => {
+              const maxQuantity = myTradeCardCountByKey[cardKey] ?? 1
+              handleUpdateTradeQuantity(cardKey, quantity, maxQuantity, setSelectedOfferCards)
+            }}
+            onUpdateRequestQuantity={(cardKey, quantity) => {
+              const maxQuantity = partnerTradeCardCountByKey[cardKey] ?? 1
+              handleUpdateTradeQuantity(cardKey, quantity, maxQuantity, setSelectedRequestCards)
+            }}
             onSendTradeRequest={() => {
               void handleSendTradeRequest()
             }}
@@ -778,6 +1173,7 @@ function App() {
             showOwnedBySection={showOwnedBySection}
             selectedUserDuplicates={selectedUserDuplicates}
             friendDuplicateOwners={friendDuplicateOwners}
+            recentlyMarkedKeys={recentlyMarkedKeys}
             onToggleSection={handleToggleSection}
             onToggleShowOwned={handleToggleShowOwned}
             onOwnerHoverStart={handleOwnerHoverStart}

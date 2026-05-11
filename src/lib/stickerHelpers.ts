@@ -1,6 +1,9 @@
 import type {
   SectionDefinition,
   TradeCard,
+  TradeLine,
+  TradeRequest,
+  TradeStatus,
   UserDuplicates,
   UserRecord,
   UserStickers,
@@ -185,7 +188,9 @@ export function parseUserDuplicates(value: unknown): UserDuplicates {
         const numericValue =
           typeof rawCountValue === 'number'
             ? rawCountValue
-            : Number.parseInt(String(rawCountValue), 10)
+            : typeof rawCountValue === 'string'
+              ? Number.parseInt(rawCountValue, 10)
+              : Number.NaN
 
         addDuplicateCount(duplicates, sectionCode, stickerIndex, numericValue)
       }
@@ -201,7 +206,11 @@ export function parseUserDuplicates(value: unknown): UserDuplicates {
     const sectionCode = normalizeCode(match[1])
     const stickerIndex = Number.parseInt(match[2], 10)
     const numericValue =
-      typeof rawValue === 'number' ? rawValue : Number.parseInt(String(rawValue), 10)
+      typeof rawValue === 'number'
+        ? rawValue
+        : typeof rawValue === 'string'
+          ? Number.parseInt(rawValue, 10)
+          : Number.NaN
 
     addDuplicateCount(duplicates, sectionCode, stickerIndex, numericValue)
   }
@@ -347,6 +356,132 @@ export function parseUsernamesSnapshot(value: unknown): string[] {
   }
 
   return names
+}
+
+function parseTradeLines(value: unknown): TradeLine[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const lines: TradeLine[] = []
+
+  for (const rawLine of value) {
+    if (rawLine == null || typeof rawLine !== 'object') {
+      continue
+    }
+
+    const line = rawLine as {
+      section?: unknown
+      sticker?: unknown
+      quantity?: unknown
+      available?: unknown
+    }
+
+    if (typeof line.section !== 'string') {
+      continue
+    }
+
+    const sectionCode = normalizeCode(line.section)
+    const stickerNumber =
+      typeof line.sticker === 'number'
+        ? Math.trunc(line.sticker)
+        : typeof line.sticker === 'string'
+          ? Number.parseInt(line.sticker, 10)
+          : Number.NaN
+    const parsedQuantity =
+      typeof line.quantity === 'number'
+        ? Math.trunc(line.quantity)
+        : typeof line.quantity === 'string'
+          ? Number.parseInt(line.quantity, 10)
+          : Number.NaN
+    const parsedAvailable =
+      typeof line.available === 'number'
+        ? Math.trunc(line.available)
+        : typeof line.available === 'string'
+          ? Number.parseInt(line.available, 10)
+          : Number.NaN
+    const quantity =
+      Number.isInteger(parsedQuantity) && parsedQuantity > 0
+        ? parsedQuantity
+        : Number.isInteger(parsedAvailable) && parsedAvailable > 0
+          ? 1
+          : 0
+
+    if (!isValidStickerIndex(sectionCode, stickerNumber)) {
+      continue
+    }
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      continue
+    }
+
+    lines.push({
+      section: sectionCode,
+      sticker: stickerNumber,
+      quantity,
+    })
+  }
+
+  return lines
+}
+
+export function parseTradeRequestsSnapshot(value: unknown): TradeRequest[] {
+  if (value == null || typeof value !== 'object') {
+    return []
+  }
+
+  const requests: TradeRequest[] = []
+
+  for (const [id, rawTrade] of Object.entries(value as Record<string, unknown>)) {
+    if (rawTrade == null || typeof rawTrade !== 'object') {
+      continue
+    }
+
+    const trade = rawTrade as {
+      from?: unknown
+      to?: unknown
+      offered?: unknown
+      requested?: unknown
+      status?: unknown
+      createdAt?: unknown
+    }
+
+    if (typeof trade.from !== 'string' || typeof trade.to !== 'string') {
+      continue
+    }
+
+    const status: TradeStatus =
+      trade.status === 'accepted' || trade.status === 'declined' ? trade.status : 'pending'
+    const offered = parseTradeLines(trade.offered)
+    const requested = parseTradeLines(trade.requested)
+
+    if (offered.length === 0 && requested.length === 0) {
+      continue
+    }
+
+    requests.push({
+      id,
+      from: trade.from,
+      to: trade.to,
+      offered,
+      requested,
+      status,
+      createdAt: typeof trade.createdAt === 'number' ? trade.createdAt : null,
+    })
+  }
+
+  return requests.sort((left, right) => {
+    if (left.createdAt == null && right.createdAt == null) {
+      return left.id.localeCompare(right.id)
+    }
+    if (left.createdAt == null) {
+      return 1
+    }
+    if (right.createdAt == null) {
+      return -1
+    }
+    return right.createdAt - left.createdAt
+  })
 }
 
 export function getStickerNumbers(sectionCode: string, stickerCount: number): number[] {
