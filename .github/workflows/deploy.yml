@@ -55,4 +55,4 @@ jobs:
       - name: Purge GitHub Pages cache
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh api -X POST repos/${GITHUB_REPOSITORY}/pages/purge-cache
+        run: gh api --method POST repos/${GITHUB_REPOSITORY}/pages/cache/clear
