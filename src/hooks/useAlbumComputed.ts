@@ -1,11 +1,6 @@
 import { useMemo } from 'react'
 
-import {
-  ALBUM_SECTIONS,
-  buildTradeCards,
-  getStickerNumbers,
-  normalizeCode,
-} from '../lib/stickerHelpers'
+import { ALBUM_SECTIONS, buildTradeCards, normalizeCode } from '../lib/stickerHelpers'
 import type { SectionDefinition, TradeCard, UserRecord, UsersState } from '../types/stickers'
 
 type UseAlbumComputedParams = {
@@ -91,7 +86,7 @@ function useAlbumComputed({
     const unknownCodes = Object.keys(selectedUserStickers).filter((code) => !knownCodes.has(code))
 
     return unknownCodes.map((code) => {
-      const indexes = getStickerNumbers(selectedUserStickers[code] ?? {})
+      const indexes = Object.keys(selectedUserStickers[code] ?? {}).map((value) => Number.parseInt(value, 10))
       const maxValue = indexes.reduce((highest, value) => {
         if (Number.isInteger(value) && value > highest) {
           return value
