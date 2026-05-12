@@ -1,15 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import {
-  get,
-  onValue,
-  push,
-  ref,
-  remove,
-  serverTimestamp,
-  set,
-  update,
-  type DatabaseReference,
-} from 'firebase/database'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { get, ref, remove, set, type DatabaseReference } from 'firebase/database'
 
 import AlbumSections from './components/AlbumSections'
 import BottomTabs from './components/BottomTabs'
@@ -17,20 +7,12 @@ import NamePicker from './components/NamePicker'
 import PendingTradesDropdown from './components/PendingTradesDropdown'
 import TradesTab from './components/TradesTab'
 import { database } from './lib/firebase'
-import {
-  ALBUM_SECTIONS,
-  USERNAME_SEED,
-  USER_STORAGE_KEY,
-  buildTradeCards,
-  formatStickerLabel,
-  getStickerNumbers,
-  normalizeCode,
-  parseUserRecord,
-  parseTradeRequestsSnapshot,
-  parseUsernamesSnapshot,
-  parseUsersSnapshot,
-} from './lib/stickerHelpers'
-import type { ActiveOwners, AppTab, SectionDefinition, TradeRequest, UserRecord, UsersState } from './types/stickers'
+import { formatStickerLabel, getStickerNumbers, normalizeCode, parseUserRecord } from './lib/stickerHelpers'
+import useAlbumComputed from './hooks/useAlbumComputed'
+import useTradeRequests from './hooks/useTradeRequests'
+import useTradeSelection from './hooks/useTradeSelection'
+import useUsersData from './hooks/useUsersData'
+import type { ActiveOwners, AppTab } from './types/stickers'
 
 function getStickerRef(username: string, sectionCode: string, stickerNumber: number): DatabaseReference {
   return ref(database, `users/${username}/stickers/${sectionCode}/${stickerNumber}`)
@@ -40,24 +22,17 @@ function getDuplicateRef(username: string, sectionCode: string, stickerNumber: n
   return ref(database, `users/${username}/duplicates/${sectionCode}/${stickerNumber}`)
 }
 
-type SelectedTradeLine = {
-  key: string
-  sectionCode: string
-  stickerNumber: number
-  quantity: number
-}
-
 function App() {
-  const [users, setUsers] = useState<UsersState>({})
-  const [availableUsers, setAvailableUsers] = useState<string[]>(() => Object.keys(USERNAME_SEED))
-  const [selectedUser, setSelectedUser] = useState<string | null>(() => {
-    const storedUser = localStorage.getItem(USER_STORAGE_KEY)
-    if (storedUser == null || storedUser.trim().length === 0) {
-      return null
-    }
-
-    return storedUser
-  })
+  const {
+    users,
+    availableUsers,
+    setSelectedUser,
+    activeSelectedUser,
+    isConnected,
+    error,
+    setError,
+    setUserRecord,
+  } = useUsersData()
   const [activeTab, setActiveTab] = useState<AppTab>('album')
   const [searchTerm, setSearchTerm] = useState('')
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -66,430 +41,75 @@ function App() {
     MEX: false,
   })
   const [showOwnedBySection, setShowOwnedBySection] = useState<Record<string, boolean>>({})
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [tradeStatus, setTradeStatus] = useState<string | null>(null)
   const [activeOwners, setActiveOwners] = useState<ActiveOwners | null>(null)
   const [tradePartnerSelection, setTradePartnerSelection] = useState<string | null>(null)
-  const [selectedOfferCards, setSelectedOfferCards] = useState<Record<string, number>>({})
-  const [selectedRequestCards, setSelectedRequestCards] = useState<Record<string, number>>({})
-  const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([])
   const [recentlyMarkedKeys, setRecentlyMarkedKeys] = useState<Record<string, true>>({})
 
   const longPressTimerRef = useRef<number | null>(null)
   const skipNextToggleKeyRef = useRef<string | null>(null)
-  const observedTradeStatusRef = useRef<Record<string, TradeRequest['status']>>({})
-
-  const activeSelectedUser = useMemo(() => {
-    if (selectedUser != null && availableUsers.includes(selectedUser)) {
-      return selectedUser
-    }
-
-    return null
-  }, [availableUsers, selectedUser])
 
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current != null) {
-        window.clearTimeout(longPressTimerRef.current)
+        globalThis.clearTimeout(longPressTimerRef.current)
       }
     }
   }, [])
 
-  useEffect(() => {
-    const usersRef = ref(database, 'users')
-    const unsubscribe = onValue(usersRef, (snapshot) => {
-      setUsers(parseUsersSnapshot(snapshot.val()))
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  useEffect(() => {
-    const usernamesRef = ref(database, 'usernames')
-    const unsubscribe = onValue(
-      usernamesRef,
-      (snapshot) => {
-        const parsedUsernames = parseUsernamesSnapshot(snapshot.val())
-
-        if (parsedUsernames.length === 0) {
-          const seededNames = Object.keys(USERNAME_SEED)
-          void set(usernamesRef, USERNAME_SEED).catch(() => null)
-          setAvailableUsers(seededNames)
-          return
-        }
-
-        setAvailableUsers(parsedUsernames)
-      },
-      () => {
-        setAvailableUsers(Object.keys(USERNAME_SEED))
-      },
-    )
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  useEffect(() => {
-    const tradeRequestsRef = ref(database, 'tradeRequests')
-    const unsubscribe = onValue(tradeRequestsRef, (snapshot) => {
-      const nextTrades = parseTradeRequestsSnapshot(snapshot.val())
-      setTradeRequests(nextTrades)
-
-      if (activeSelectedUser == null) {
-        observedTradeStatusRef.current = {}
-        return
-      }
-
-      const previousStatuses = observedTradeStatusRef.current
-      const nextStatuses: Record<string, TradeRequest['status']> = {}
-      let nextNotification: string | null = null
-
-      for (const trade of nextTrades) {
-        if (trade.from !== activeSelectedUser && trade.to !== activeSelectedUser) {
-          continue
-        }
-
-        nextStatuses[trade.id] = trade.status
-        const previousStatus = previousStatuses[trade.id]
-
-        if (
-          previousStatus === 'pending' &&
-          (trade.status === 'accepted' || trade.status === 'declined')
-        ) {
-          const partner = trade.from === activeSelectedUser ? trade.to : trade.from
-          nextNotification =
-            trade.status === 'accepted'
-              ? `Trade with ${partner} was accepted.`
-              : `Trade with ${partner} was declined.`
-        }
-      }
-
-      observedTradeStatusRef.current = nextStatuses
-
-      if (nextNotification != null) {
-        setTradeStatus(nextNotification)
-      }
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [activeSelectedUser])
-
-  useEffect(() => {
-    const connectedRef = ref(database, '.info/connected')
-    const unsubscribe = onValue(connectedRef, (snapshot) => {
-      setIsConnected(snapshot.val() === true)
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (activeSelectedUser != null) {
-      localStorage.setItem(USER_STORAGE_KEY, activeSelectedUser)
-      return
-    }
-
-    localStorage.removeItem(USER_STORAGE_KEY)
-  }, [activeSelectedUser])
-
-  useEffect(() => {
-    if (activeSelectedUser == null) {
-      return
-    }
-
-    const userStickersRef = ref(database, `users/${activeSelectedUser}/stickers`)
-    const userDuplicatesRef = ref(database, `users/${activeSelectedUser}/duplicates`)
-
-    void get(userStickersRef)
-      .then((snapshot) => {
-        if (!snapshot.exists()) {
-          return set(userStickersRef, {})
-        }
-
-        return null
-      })
-      .catch(() => null)
-
-    void get(userDuplicatesRef)
-      .then((snapshot) => {
-        if (!snapshot.exists()) {
-          return set(userDuplicatesRef, {})
-        }
-
-        return null
-      })
-      .catch(() => null)
-  }, [activeSelectedUser])
-
-  const selectedUserData = useMemo<UserRecord>(() => {
-    if (activeSelectedUser == null) {
-      return { stickers: {}, duplicates: {} }
-    }
-
-    return users[activeSelectedUser] ?? { stickers: {}, duplicates: {} }
-  }, [activeSelectedUser, users])
-
-  const selectedUserStickers = selectedUserData.stickers
-  const selectedUserDuplicates = selectedUserData.duplicates
-
-  const tradeCandidates = useMemo(() => {
-    return availableUsers.filter((username) => {
-      return activeSelectedUser != null && username !== activeSelectedUser
-    })
-  }, [activeSelectedUser, availableUsers])
-
-  const activeTradePartner = useMemo(() => {
-    if (tradeCandidates.length === 0) {
-      return null
-    }
-
-    if (tradePartnerSelection != null && tradeCandidates.includes(tradePartnerSelection)) {
-      return tradePartnerSelection
-    }
-
-    return tradeCandidates[0]
-  }, [tradeCandidates, tradePartnerSelection])
-
-  const activeTradePartnerData = useMemo<UserRecord>(() => {
-    if (activeTradePartner == null) {
-      return { stickers: {}, duplicates: {} }
-    }
-
-    return users[activeTradePartner] ?? { stickers: {}, duplicates: {} }
-  }, [activeTradePartner, users])
-
-  const activeTradePartnerDuplicates = activeTradePartnerData.duplicates
-
-  const extraSections = useMemo<SectionDefinition[]>(() => {
-    const knownCodes = new Set(ALBUM_SECTIONS.map((section) => section.code))
-    const unknownCodes = Object.keys(selectedUserStickers).filter((code) => !knownCodes.has(code))
-
-    return unknownCodes.map((code) => {
-      const indexes = Object.keys(selectedUserStickers[code] ?? {}).map((value) =>
-        Number.parseInt(value, 10),
-      )
-      const maxValue = indexes.reduce((highest, value) => {
-        if (Number.isInteger(value) && value > highest) {
-          return value
-        }
-
-        return highest
-      }, 0)
-
-      return {
-        code,
-        name: code,
-        flag: '🏷️',
-        stickerCount: Math.max(maxValue, 20),
-      }
-    })
-  }, [selectedUserStickers])
-
-  const allSections = useMemo(() => {
-    return [...ALBUM_SECTIONS, ...extraSections]
-  }, [extraSections])
-
-  const sectionNameByCode = useMemo(() => {
-    const map: Record<string, string> = {}
-
-    for (const section of allSections) {
-      map[section.code] = section.name
-    }
-
-    return map
-  }, [allSections])
-
-  const filteredSections = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
-
-    if (normalizedSearch.length === 0) {
-      return allSections
-    }
-
-    return allSections.filter((section) => {
-      return (
-        section.code.toLowerCase().includes(normalizedSearch) ||
-        section.name.toLowerCase().includes(normalizedSearch)
-      )
-    })
-  }, [allSections, searchTerm])
-
-  const myTradeCards = useMemo(() => {
-    return buildTradeCards(selectedUserDuplicates, sectionNameByCode)
-  }, [sectionNameByCode, selectedUserDuplicates])
-
-  const partnerTradeCards = useMemo(() => {
-    return buildTradeCards(activeTradePartnerDuplicates, sectionNameByCode)
-  }, [activeTradePartnerDuplicates, sectionNameByCode])
-
-  const filteredMyTradeCards = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
-
-    if (normalizedSearch.length === 0) {
-      return myTradeCards
-    }
-
-    return myTradeCards.filter((card) => {
-      return (
-        card.label.toLowerCase().includes(normalizedSearch) ||
-        card.sectionName.toLowerCase().includes(normalizedSearch)
-      )
-    })
-  }, [myTradeCards, searchTerm])
-
-  const filteredPartnerTradeCards = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
-
-    if (normalizedSearch.length === 0) {
-      return partnerTradeCards
-    }
-
-    return partnerTradeCards.filter((card) => {
-      return (
-        card.label.toLowerCase().includes(normalizedSearch) ||
-        card.sectionName.toLowerCase().includes(normalizedSearch)
-      )
-    })
-  }, [partnerTradeCards, searchTerm])
-
-  const selectedOfferTradeCards = useMemo<SelectedTradeLine[]>(() => {
-    return myTradeCards
-      .map((card) => {
-        const quantity = selectedOfferCards[card.key] ?? 0
-        if (quantity <= 0) {
-          return null
-        }
-
-        return {
-          key: card.key,
-          sectionCode: card.sectionCode,
-          stickerNumber: card.stickerNumber,
-          quantity: Math.min(quantity, card.count),
-        }
-      })
-      .filter((line): line is SelectedTradeLine => line != null)
-  }, [myTradeCards, selectedOfferCards])
-
-  const selectedRequestTradeCards = useMemo<SelectedTradeLine[]>(() => {
-    return partnerTradeCards
-      .map((card) => {
-        const quantity = selectedRequestCards[card.key] ?? 0
-        if (quantity <= 0) {
-          return null
-        }
-
-        return {
-          key: card.key,
-          sectionCode: card.sectionCode,
-          stickerNumber: card.stickerNumber,
-          quantity: Math.min(quantity, card.count),
-        }
-      })
-      .filter((line): line is SelectedTradeLine => line != null)
-  }, [partnerTradeCards, selectedRequestCards])
-
-  const myTradeCardCountByKey = useMemo(() => {
-    const counts: Record<string, number> = {}
-
-    for (const card of myTradeCards) {
-      counts[card.key] = card.count
-    }
-
-    return counts
-  }, [myTradeCards])
-
-  const partnerTradeCardCountByKey = useMemo(() => {
-    const counts: Record<string, number> = {}
-
-    for (const card of partnerTradeCards) {
-      counts[card.key] = card.count
-    }
-
-    return counts
-  }, [partnerTradeCards])
-
-  const ownedCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-
-    for (const section of allSections) {
-      counts[section.code] = Object.keys(selectedUserStickers[section.code] ?? {}).length
-    }
-
-    return counts
-  }, [allSections, selectedUserStickers])
-
-  const duplicateCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-
-    for (const section of allSections) {
-      const duplicates = selectedUserDuplicates[section.code] ?? {}
-      counts[section.code] = Object.values(duplicates).reduce((sum, value) => sum + value, 0)
-    }
-
-    return counts
-  }, [allSections, selectedUserDuplicates])
-
-  const friendDuplicateOwners = useMemo(() => {
-    const owners: Record<string, string[]> = {}
-
-    for (const [username, userData] of Object.entries(users)) {
-      if (activeSelectedUser != null && username === activeSelectedUser) {
-        continue
-      }
-
-      for (const [sectionCode, sectionDuplicates] of Object.entries(userData.duplicates)) {
-        const friendSectionStickers = userData.stickers[sectionCode] ?? {}
-
-        for (const [stickerKey, count] of Object.entries(sectionDuplicates)) {
-          if (count <= 0) {
-            continue
-          }
-
-          if (friendSectionStickers[stickerKey] !== true) {
-            continue
-          }
-
-          const mapKey = `${sectionCode}:${stickerKey}`
-          owners[mapKey] ??= []
-
-          if (count > 1) {
-            owners[mapKey].push(`${username} (${count})`)
-          } else {
-            owners[mapKey].push(username)
-          }
-        }
-      }
-    }
-
-    for (const key of Object.keys(owners)) {
-      owners[key] = owners[key].sort((left, right) => left.localeCompare(right))
-    }
-
-    return owners
-  }, [activeSelectedUser, users])
-
-  const totals = useMemo(() => {
-    let owned = 0
-    let albumTotal = 0
-    let duplicates = 0
-
-    for (const section of allSections) {
-      owned += ownedCounts[section.code] ?? 0
-      albumTotal += section.stickerCount
-      duplicates += duplicateCounts[section.code] ?? 0
-    }
-
-    const percentage = albumTotal === 0 ? 0 : Math.round((owned / albumTotal) * 100)
-    return { owned, albumTotal, percentage, duplicates }
-  }, [allSections, duplicateCounts, ownedCounts])
+  const {
+    selectedUserStickers,
+    selectedUserDuplicates,
+    tradeCandidates,
+    activeTradePartner,
+    filteredSections,
+    myTradeCards,
+    partnerTradeCards,
+    filteredMyTradeCards,
+    filteredPartnerTradeCards,
+    ownedCounts,
+    duplicateCounts,
+    friendDuplicateOwners,
+    totals,
+  } = useAlbumComputed({
+    users,
+    activeSelectedUser,
+    availableUsers,
+    tradePartnerSelection,
+    searchTerm,
+  })
+
+  const {
+    selectedOfferCards,
+    selectedRequestCards,
+    selectedOfferTradeCards,
+    selectedRequestTradeCards,
+    myTradeCardCountByKey,
+    partnerTradeCardCountByKey,
+    toggleOfferCard,
+    toggleRequestCard,
+    updateOfferQuantity,
+    updateRequestQuantity,
+    resetTradeSelection,
+  } = useTradeSelection({
+    myTradeCards,
+    partnerTradeCards,
+  })
+
+  const {
+    tradeStatus,
+    setTradeStatus,
+    pendingTrades,
+    handleSendTradeRequest,
+    handleAcceptTradeRequest,
+    handleDeclineTradeRequest,
+  } = useTradeRequests({
+    activeSelectedUser,
+    activeTradePartner,
+    selectedOfferTradeCards,
+    selectedRequestTradeCards,
+    resetTradeSelection,
+    setError,
+  })
 
   const activeOwnersList = useMemo(() => {
     if (activeOwners == null) {
@@ -498,30 +118,6 @@ function App() {
 
     return friendDuplicateOwners[activeOwners.key] ?? []
   }, [activeOwners, friendDuplicateOwners])
-
-  const pendingTrades = useMemo(() => {
-    if (activeSelectedUser == null) {
-      return []
-    }
-
-    return tradeRequests.filter((trade) => {
-      if (trade.status !== 'pending') {
-        return false
-      }
-
-      return trade.from === activeSelectedUser || trade.to === activeSelectedUser
-    })
-  }, [activeSelectedUser, tradeRequests])
-
-  function setUserRecord(userName: string, updater: (current: UserRecord) => UserRecord): void {
-    setUsers((previousUsers) => {
-      const current = previousUsers[userName] ?? { stickers: {}, duplicates: {} }
-      return {
-        ...previousUsers,
-        [userName]: updater(current),
-      }
-    })
-  }
 
   function clearRecentlyMarked(stickerMapKey: string): void {
     setRecentlyMarkedKeys((previous) => {
@@ -720,11 +316,11 @@ function App() {
     }
 
     if (longPressTimerRef.current != null) {
-      window.clearTimeout(longPressTimerRef.current)
+      globalThis.clearTimeout(longPressTimerRef.current)
       longPressTimerRef.current = null
     }
 
-    longPressTimerRef.current = window.setTimeout(() => {
+    longPressTimerRef.current = globalThis.setTimeout(() => {
       setActiveOwners(meta)
       skipNextToggleKeyRef.current = meta.key
       longPressTimerRef.current = null
@@ -733,7 +329,7 @@ function App() {
 
   function handleOwnerTouchEnd(metaKey: string): void {
     if (longPressTimerRef.current != null) {
-      window.clearTimeout(longPressTimerRef.current)
+      globalThis.clearTimeout(longPressTimerRef.current)
       longPressTimerRef.current = null
     }
 
@@ -753,262 +349,6 @@ function App() {
     void handleToggleSticker(normalizedCode, stickerNumber)
   }
 
-  function resetTradeSelection(): void {
-    setSelectedOfferCards({})
-    setSelectedRequestCards({})
-    setTradeStatus(null)
-  }
-
-  function handleToggleTradeCard(
-    key: string,
-    setSelection: Dispatch<SetStateAction<Record<string, number>>>,
-  ): void {
-    setSelection((previous) => {
-      const next = { ...previous }
-      if ((next[key] ?? 0) > 0) {
-        delete next[key]
-      } else {
-        next[key] = 1
-      }
-
-      return next
-    })
-  }
-
-  function handleUpdateTradeQuantity(
-    key: string,
-    quantity: number,
-    maxQuantity: number,
-    setSelection: Dispatch<SetStateAction<Record<string, number>>>,
-  ): void {
-    setSelection((previous) => {
-      const normalizedQuantity = Math.max(1, Math.min(maxQuantity, quantity))
-      const next = { ...previous, [key]: normalizedQuantity }
-      return next
-    })
-  }
-
-  async function handleSendTradeRequest(): Promise<void> {
-    if (activeSelectedUser == null || activeTradePartner == null) {
-      return
-    }
-
-    if (selectedOfferTradeCards.length === 0 && selectedRequestTradeCards.length === 0) {
-      setTradeStatus('Pick at least one sticker to offer or request.')
-      return
-    }
-
-    setError(null)
-    setTradeStatus(null)
-
-    try {
-      const tradeRequestsRef = ref(database, 'tradeRequests')
-      await set(push(tradeRequestsRef), {
-        from: activeSelectedUser,
-        to: activeTradePartner,
-        offered: selectedOfferTradeCards.map((card) => ({
-          section: card.sectionCode,
-          sticker: card.stickerNumber,
-          quantity: card.quantity,
-        })),
-        requested: selectedRequestTradeCards.map((card) => ({
-          section: card.sectionCode,
-          sticker: card.stickerNumber,
-          quantity: card.quantity,
-        })),
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      })
-
-      setTradeStatus(`Trade request sent to ${activeTradePartner}.`)
-      setSelectedOfferCards({})
-      setSelectedRequestCards({})
-    } catch {
-      setTradeStatus('Could not send trade request right now.')
-    }
-  }
-
-  function cloneUserRecord(record: UserRecord): UserRecord {
-    const stickers: UserRecord['stickers'] = {}
-    const duplicates: UserRecord['duplicates'] = {}
-
-    for (const [sectionCode, sectionStickers] of Object.entries(record.stickers)) {
-      stickers[sectionCode] = { ...sectionStickers }
-    }
-
-    for (const [sectionCode, sectionDuplicates] of Object.entries(record.duplicates)) {
-      duplicates[sectionCode] = { ...sectionDuplicates }
-    }
-
-    return { stickers, duplicates }
-  }
-
-  function getDuplicateAmount(record: UserRecord, sectionCode: string, stickerNumber: number): number {
-    return record.duplicates[sectionCode]?.[String(stickerNumber)] ?? 0
-  }
-
-  function setDuplicateAmount(
-    record: UserRecord,
-    sectionCode: string,
-    stickerNumber: number,
-    amount: number,
-  ): void {
-    const stickerKey = String(stickerNumber)
-    const sectionDuplicates = { ...(record.duplicates[sectionCode] ?? {}) }
-
-    if (amount <= 0) {
-      delete sectionDuplicates[stickerKey]
-    } else {
-      sectionDuplicates[stickerKey] = amount
-    }
-
-    if (Object.keys(sectionDuplicates).length === 0) {
-      delete record.duplicates[sectionCode]
-    } else {
-      record.duplicates[sectionCode] = sectionDuplicates
-    }
-  }
-
-  function markStickerOwned(record: UserRecord, sectionCode: string, stickerNumber: number): void {
-    const stickerKey = String(stickerNumber)
-    const sectionStickers = { ...(record.stickers[sectionCode] ?? {}) }
-    sectionStickers[stickerKey] = true
-    record.stickers[sectionCode] = sectionStickers
-  }
-
-  function canSendLines(record: UserRecord, lines: SelectedTradeLine[]): boolean {
-    for (const line of lines) {
-      const available = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
-      if (available < line.quantity) {
-        return false
-      }
-    }
-
-    return true
-  }
-
-  function applyOutgoingLines(record: UserRecord, lines: SelectedTradeLine[]): void {
-    for (const line of lines) {
-      const available = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
-      const nextAmount = available - line.quantity
-      setDuplicateAmount(record, line.sectionCode, line.stickerNumber, nextAmount)
-    }
-  }
-
-  function applyIncomingLines(record: UserRecord, lines: SelectedTradeLine[]): void {
-    for (const line of lines) {
-      const stickerKey = String(line.stickerNumber)
-      const alreadyOwned = record.stickers[line.sectionCode]?.[stickerKey] === true
-
-      if (alreadyOwned) {
-        const duplicateAmount = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
-        setDuplicateAmount(
-          record,
-          line.sectionCode,
-          line.stickerNumber,
-          duplicateAmount + line.quantity,
-        )
-        continue
-      }
-
-      markStickerOwned(record, line.sectionCode, line.stickerNumber)
-
-      if (line.quantity > 1) {
-        const duplicateAmount = getDuplicateAmount(record, line.sectionCode, line.stickerNumber)
-        setDuplicateAmount(
-          record,
-          line.sectionCode,
-          line.stickerNumber,
-          duplicateAmount + line.quantity - 1,
-        )
-      }
-    }
-  }
-
-  async function handleAcceptTradeRequest(tradeId: string): Promise<void> {
-    if (activeSelectedUser == null) {
-      return
-    }
-
-    const selectedTrade = tradeRequests.find((trade) => trade.id === tradeId)
-    if (selectedTrade == null || selectedTrade.status !== 'pending') {
-      return
-    }
-
-    if (selectedTrade.to !== activeSelectedUser) {
-      setTradeStatus('Only the receiver can confirm this trade.')
-      return
-    }
-
-    const offeredLines: SelectedTradeLine[] = selectedTrade.offered.map((line) => ({
-      key: `${line.section}:${line.sticker}`,
-      sectionCode: line.section,
-      stickerNumber: line.sticker,
-      quantity: line.quantity,
-    }))
-    const requestedLines: SelectedTradeLine[] = selectedTrade.requested.map((line) => ({
-      key: `${line.section}:${line.sticker}`,
-      sectionCode: line.section,
-      stickerNumber: line.sticker,
-      quantity: line.quantity,
-    }))
-
-    try {
-      const usersSnapshot = await get(ref(database, 'users'))
-      const latestUsers = parseUsersSnapshot(usersSnapshot.val())
-      const fromRecord = cloneUserRecord(latestUsers[selectedTrade.from] ?? { stickers: {}, duplicates: {} })
-      const toRecord = cloneUserRecord(latestUsers[selectedTrade.to] ?? { stickers: {}, duplicates: {} })
-
-      if (!canSendLines(fromRecord, offeredLines) || !canSendLines(toRecord, requestedLines)) {
-        setTradeStatus('Trade quantities changed. Please review and resend.')
-        return
-      }
-
-      applyOutgoingLines(fromRecord, offeredLines)
-      applyIncomingLines(toRecord, offeredLines)
-      applyOutgoingLines(toRecord, requestedLines)
-      applyIncomingLines(fromRecord, requestedLines)
-
-      await set(ref(database, `users/${selectedTrade.from}`), fromRecord)
-      await set(ref(database, `users/${selectedTrade.to}`), toRecord)
-      await update(ref(database, `tradeRequests/${tradeId}`), {
-        status: 'accepted',
-        resolvedAt: serverTimestamp(),
-        resolvedBy: activeSelectedUser,
-      })
-      setTradeStatus('Trade accepted and inventories updated.')
-    } catch {
-      setTradeStatus('Could not confirm trade right now.')
-    }
-  }
-
-  async function handleDeclineTradeRequest(tradeId: string): Promise<void> {
-    if (activeSelectedUser == null) {
-      return
-    }
-
-    const selectedTrade = tradeRequests.find((trade) => trade.id === tradeId)
-    if (selectedTrade == null || selectedTrade.status !== 'pending') {
-      return
-    }
-
-    if (selectedTrade.to !== activeSelectedUser) {
-      setTradeStatus('Only the receiver can decline this trade.')
-      return
-    }
-
-    try {
-      await update(ref(database, `tradeRequests/${tradeId}`), {
-        status: 'declined',
-        resolvedAt: serverTimestamp(),
-        resolvedBy: activeSelectedUser,
-      })
-      setTradeStatus('Trade declined.')
-    } catch {
-      setTradeStatus('Could not decline trade right now.')
-    }
-  }
-
   function formatPendingTradeLine(sectionCode: string, stickerNumber: number, quantity: number): string {
     return `${sectionCode} ${formatStickerLabel(sectionCode, stickerNumber)} x${quantity}`
   }
@@ -1021,6 +361,7 @@ function App() {
           setSelectedUser(username)
           setTradePartnerSelection(null)
           resetTradeSelection()
+          setTradeStatus(null)
         }}
       />
     )
@@ -1045,6 +386,7 @@ function App() {
                 setSelectedUser(null)
                 setTradePartnerSelection(null)
                 resetTradeSelection()
+                setTradeStatus(null)
                 setActiveTab('album')
               }}
             >
@@ -1142,20 +484,21 @@ function App() {
             onPartnerChange={(partner) => {
               setTradePartnerSelection(partner)
               resetTradeSelection()
+              setTradeStatus(null)
             }}
             onToggleOfferCard={(cardKey) => {
-              handleToggleTradeCard(cardKey, setSelectedOfferCards)
+              toggleOfferCard(cardKey)
             }}
             onToggleRequestCard={(cardKey) => {
-              handleToggleTradeCard(cardKey, setSelectedRequestCards)
+              toggleRequestCard(cardKey)
             }}
             onUpdateOfferQuantity={(cardKey, quantity) => {
               const maxQuantity = myTradeCardCountByKey[cardKey] ?? 1
-              handleUpdateTradeQuantity(cardKey, quantity, maxQuantity, setSelectedOfferCards)
+              updateOfferQuantity(cardKey, quantity, maxQuantity)
             }}
             onUpdateRequestQuantity={(cardKey, quantity) => {
               const maxQuantity = partnerTradeCardCountByKey[cardKey] ?? 1
-              handleUpdateTradeQuantity(cardKey, quantity, maxQuantity, setSelectedRequestCards)
+              updateRequestQuantity(cardKey, quantity, maxQuantity)
             }}
             onSendTradeRequest={() => {
               void handleSendTradeRequest()
