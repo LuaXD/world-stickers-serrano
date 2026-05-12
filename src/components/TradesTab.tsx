@@ -84,6 +84,12 @@ export default function TradesTab({
               const isSelected = selectedQuantity > 0
               const partnerHas = partnerOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
               const partnerNeeds = offerNeededKeys[card.key] === true
+              const needsBadge =
+                partnerHas || !partnerNeeds
+                  ? null
+                  : activeTradePartner === 'Botas'
+                    ? `${card.label} · It need`
+                    : 'They need'
 
               return (
                 <li key={`offer-${card.key}`}>
@@ -100,7 +106,11 @@ export default function TradesTab({
                   >
                     <span>
                       {card.label}
-                      {partnerHas ? null : <span className="ml-2 rounded bg-emerald-600/30 px-2 py-[2px] text-[10px] text-emerald-50">They need</span>}
+                      {needsBadge == null ? null : (
+                        <span className="ml-2 rounded bg-emerald-600/30 px-2 py-[2px] text-[10px] text-emerald-50">
+                          {needsBadge}
+                        </span>
+                      )}
                     </span>
                     <span className="font-semibold text-zinc-200">
                       {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
