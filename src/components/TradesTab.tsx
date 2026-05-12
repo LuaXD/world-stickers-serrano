@@ -88,7 +88,7 @@ export default function TradesTab({
                 partnerHas || !partnerNeeds
                   ? null
                   : activeTradePartner === 'Botas'
-                    ? `${card.label} · It need`
+                    ? 'It need'
                     : 'They need'
 
               return (
