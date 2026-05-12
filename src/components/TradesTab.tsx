@@ -5,6 +5,10 @@ type TradesTabProps = {
   tradeCandidates: string[]
   filteredMyTradeCards: TradeCard[]
   filteredPartnerTradeCards: TradeCard[]
+  partnerOwnedStickers: Record<string, Record<string, true>>
+  meOwnedStickers: Record<string, Record<string, true>>
+  offerNeededKeys: Record<string, true>
+  requestNeededKeys: Record<string, true>
   selectedOfferCards: Record<string, number>
   selectedRequestCards: Record<string, number>
   selectedOfferCount: number
@@ -22,10 +26,14 @@ export default function TradesTab({
   tradeCandidates,
   filteredMyTradeCards,
   filteredPartnerTradeCards,
+  offerNeededKeys,
+  requestNeededKeys,
   selectedOfferCards,
   selectedRequestCards,
   selectedOfferCount,
   selectedRequestCount,
+  partnerOwnedStickers,
+  meOwnedStickers,
   onPartnerChange,
   onToggleOfferCard,
   onToggleRequestCard,
@@ -74,6 +82,8 @@ export default function TradesTab({
             {filteredMyTradeCards.map((card) => {
               const selectedQuantity = selectedOfferCards[card.key] ?? 0
               const isSelected = selectedQuantity > 0
+              const partnerHas = partnerOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
+              const partnerNeeds = offerNeededKeys[card.key] === true
 
               return (
                 <li key={`offer-${card.key}`}>
@@ -82,11 +92,16 @@ export default function TradesTab({
                     className={`flex h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-sm active:scale-[0.98] ${
                       isSelected
                         ? 'border-blue-400/70 bg-blue-500/15 text-blue-100'
-                        : 'border-zinc-700 bg-zinc-950 text-zinc-100'
+                        : partnerNeeds
+                          ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-100'
+                          : 'border-zinc-700 bg-zinc-950 text-zinc-100'
                     }`}
                     onClick={() => onToggleOfferCard(card.key)}
                   >
-                    <span>{card.label}</span>
+                    <span>
+                      {card.label}
+                      {partnerHas ? null : <span className="ml-2 rounded bg-emerald-600/30 px-2 py-[2px] text-[10px] text-emerald-50">They need</span>}
+                    </span>
                     <span className="font-semibold text-zinc-200">
                       {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
                     </span>
@@ -141,6 +156,8 @@ export default function TradesTab({
             {filteredPartnerTradeCards.map((card) => {
               const selectedQuantity = selectedRequestCards[card.key] ?? 0
               const isSelected = selectedQuantity > 0
+              const iHave = meOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
+              const iNeed = requestNeededKeys[card.key] === true
 
               return (
                 <li key={`request-${card.key}`}>
@@ -149,11 +166,16 @@ export default function TradesTab({
                     className={`flex h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-sm active:scale-[0.98] ${
                       isSelected
                         ? 'border-amber-400/70 bg-amber-500/15 text-amber-100'
-                        : 'border-zinc-700 bg-zinc-950 text-zinc-100'
+                        : iNeed
+                          ? 'border-violet-400/70 bg-violet-500/10 text-violet-100'
+                          : 'border-zinc-700 bg-zinc-950 text-zinc-100'
                     }`}
                     onClick={() => onToggleRequestCard(card.key)}
                   >
-                    <span>{card.label}</span>
+                    <span>
+                      {card.label}
+                      {iHave ? null : <span className="ml-2 rounded bg-violet-600/30 px-2 py-[2px] text-[10px] text-violet-50">You need</span>}
+                    </span>
                     <span className="font-semibold text-zinc-200">
                       {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
                     </span>

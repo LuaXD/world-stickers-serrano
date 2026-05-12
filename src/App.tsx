@@ -61,11 +61,14 @@ function App() {
     selectedUserDuplicates,
     tradeCandidates,
     activeTradePartner,
+    activeTradePartnerStickers,
     filteredSections,
     myTradeCards,
     partnerTradeCards,
     filteredMyTradeCards,
     filteredPartnerTradeCards,
+    offerNeededKeys,
+    requestNeededKeys,
     ownedCounts,
     duplicateCounts,
     friendDuplicateOwners,
@@ -481,6 +484,10 @@ function App() {
             selectedRequestCards={selectedRequestCards}
             selectedOfferCount={selectedOfferTradeCards.length}
             selectedRequestCount={selectedRequestTradeCards.length}
+          partnerOwnedStickers={activeTradePartnerStickers}
+          meOwnedStickers={selectedUserStickers}
+          offerNeededKeys={offerNeededKeys}
+          requestNeededKeys={requestNeededKeys}
             onPartnerChange={(partner) => {
               setTradePartnerSelection(partner)
               resetTradeSelection()

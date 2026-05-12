@@ -49,3 +49,7 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Purge GitHub Pages cache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X POST repos/${GITHUB_REPOSITORY}/pages/purge-cache

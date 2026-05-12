@@ -29,6 +29,7 @@ function useAlbumComputed({
   tradeCandidates: string[]
   activeTradePartner: string | null
   activeTradePartnerData: UserRecord
+  activeTradePartnerStickers: UserRecord['stickers']
   activeTradePartnerDuplicates: UserRecord['duplicates']
   extraSections: SectionDefinition[]
   allSections: SectionDefinition[]
@@ -38,6 +39,8 @@ function useAlbumComputed({
   partnerTradeCards: TradeCard[]
   filteredMyTradeCards: TradeCard[]
   filteredPartnerTradeCards: TradeCard[]
+  offerNeededKeys: Record<string, true>
+  requestNeededKeys: Record<string, true>
   ownedCounts: Record<string, number>
   duplicateCounts: Record<string, number>
   friendDuplicateOwners: Record<string, string[]>
@@ -80,6 +83,7 @@ function useAlbumComputed({
     return users[activeTradePartner] ?? { stickers: {}, duplicates: {} }
   }, [activeTradePartner, users])
 
+  const activeTradePartnerStickers = activeTradePartnerData.stickers
   const activeTradePartnerDuplicates = activeTradePartnerData.duplicates
 
   const extraSections = useMemo<SectionDefinition[]>(() => {
@@ -172,6 +176,36 @@ function useAlbumComputed({
     })
   }, [partnerTradeCards, searchTerm])
 
+  const offerNeededKeys = useMemo(() => {
+    const needed: Record<string, true> = {}
+
+    if (activeTradePartner == null) {
+      return needed
+    }
+
+    for (const card of myTradeCards) {
+      const partnerHas = activeTradePartnerStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
+      if (!partnerHas) {
+        needed[card.key] = true
+      }
+    }
+
+    return needed
+  }, [activeTradePartner, activeTradePartnerStickers, myTradeCards])
+
+  const requestNeededKeys = useMemo(() => {
+    const needed: Record<string, true> = {}
+
+    for (const card of partnerTradeCards) {
+      const iHave = selectedUserStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
+      if (!iHave) {
+        needed[card.key] = true
+      }
+    }
+
+    return needed
+  }, [partnerTradeCards, selectedUserStickers])
+
   const ownedCounts = useMemo(() => {
     const counts: Record<string, number> = {}
 
@@ -254,6 +288,7 @@ function useAlbumComputed({
     tradeCandidates,
     activeTradePartner,
     activeTradePartnerData,
+    activeTradePartnerStickers,
     activeTradePartnerDuplicates,
     extraSections,
     allSections,
@@ -263,6 +298,8 @@ function useAlbumComputed({
     partnerTradeCards,
     filteredMyTradeCards,
     filteredPartnerTradeCards,
+    offerNeededKeys,
+    requestNeededKeys,
     ownedCounts,
     duplicateCounts,
     friendDuplicateOwners,
