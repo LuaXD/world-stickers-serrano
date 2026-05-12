@@ -212,7 +212,11 @@ function useTradeRequests({
         createdAt: serverTimestamp(),
       })
 
-      setTradeStatus(`Trade request sent to ${activeTradePartner}.`)
+      if (activeTradePartner === 'Botas') {
+        setTradeStatus('Trade request sent to Botas: it needs :v')
+      } else {
+        setTradeStatus(`Trade request sent to ${activeTradePartner}.`)
+      }
       resetTradeSelection()
     } catch {
       setTradeStatus('Could not send trade request right now.')
