@@ -195,7 +195,7 @@ export default function AlbumSections({
                 ) : (
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
                     {duplicateEntries.map((entry) => {
-                      const { stickerNumber, currentDuplicate, isOwned, isOrphan } = entry
+                      const { stickerNumber, currentDuplicate, isOrphan } = entry
 
                       return (
                         <div
