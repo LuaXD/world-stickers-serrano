@@ -71,6 +71,35 @@ export default function AlbumSections({
               return ownedSet[stickerKey] !== true || recentlyMarkedKeys[mapKey] === true
             })
 
+        const duplicateEntries =
+          activeTab === 'album'
+            ? []
+            : stickerNumbers
+                .map((stickerNumber) => {
+                  const stickerKey = String(stickerNumber)
+                  const currentDuplicate = selectedUserDuplicates[section.code]?.[stickerKey] ?? 0
+                  const isOwned = selectedUserStickers[section.code]?.[stickerKey] === true
+                  const shouldDisplay = isOwned || currentDuplicate > 0
+
+                  if (!shouldDisplay) {
+                    return null
+                  }
+
+                  return {
+                    stickerNumber,
+                    stickerKey,
+                    currentDuplicate,
+                    isOwned,
+                    isOrphan: !isOwned && currentDuplicate > 0,
+                  }
+                })
+                .filter((entry): entry is NonNullable<typeof entry> => entry != null)
+
+        const hasUnownedDuplicates =
+          activeTab === 'album'
+            ? false
+            : duplicateEntries.some((entry) => entry.isOrphan === true)
+
         return (
           <article key={section.code} className="overflow-hidden rounded-2xl bg-zinc-900/85">
             <button
@@ -80,7 +109,13 @@ export default function AlbumSections({
             >
               <div className="flex items-center gap-3">
                 <span className="text-xl">{section.flag}</span>
-                <span className="text-xl font-semibold tracking-wide">{section.code}</span>
+                <span
+                  className={`text-xl font-semibold tracking-wide ${
+                    hasUnownedDuplicates ? 'text-red-400' : ''
+                  }`}
+                >
+                  {section.code}
+                </span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-semibold">
@@ -153,21 +188,34 @@ export default function AlbumSections({
                       })}
                     </div>
                   )
+                ) : duplicateEntries.length === 0 ? (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-4 text-center text-xs text-zinc-400">
+                    No duplicates in this section.
+                  </div>
                 ) : (
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-                    {stickerNumbers.map((stickerNumber) => {
-                      const stickerKey = String(stickerNumber)
-                      const currentDuplicate = selectedUserDuplicates[section.code]?.[stickerKey] ?? 0
+                    {duplicateEntries.map((entry) => {
+                      const { stickerNumber, currentDuplicate, isOwned, isOrphan } = entry
 
                       return (
                         <div
                           key={`${section.code}-duplicate-${stickerNumber}`}
-                          className="rounded-2xl border border-zinc-500 bg-zinc-900 p-2"
+                          className={`rounded-2xl border p-2 ${
+                            isOrphan ? 'border-rose-500/70 bg-rose-500/10' : 'border-zinc-500 bg-zinc-900'
+                          }`}
                         >
-                          <div className="mb-3 text-center text-[24px] font-semibold leading-none text-zinc-100">
+                          <div
+                            className={`mb-3 text-center text-[24px] font-semibold leading-none ${
+                              isOrphan ? 'text-rose-200' : 'text-zinc-100'
+                            }`}
+                          >
                             {formatStickerLabel(section.code, stickerNumber)}
                           </div>
-                          <div className="mb-2 text-center text-xs text-zinc-300">
+                          <div
+                            className={`mb-2 text-center text-xs ${
+                              isOrphan ? 'text-rose-200' : 'text-zinc-300'
+                            }`}
+                          >
                             {currentDuplicate}
                           </div>
                           <div className="grid grid-cols-2 gap-2">

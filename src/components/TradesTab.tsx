@@ -79,7 +79,20 @@ export default function TradesTab({
           </div>
         ) : (
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
-            {filteredMyTradeCards.map((card) => {
+            {[...filteredMyTradeCards]
+              .sort((left, right) => {
+                const leftNeeds =
+                  partnerOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true &&
+                  offerNeededKeys[left.key] === true
+                const rightNeeds =
+                  partnerOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
+                  offerNeededKeys[right.key] === true
+                if (leftNeeds !== rightNeeds) {
+                  return leftNeeds ? -1 : 1
+                }
+                return right.count === left.count ? 0 : right.count - left.count
+              })
+              .map((card) => {
               const selectedQuantity = selectedOfferCards[card.key] ?? 0
               const isSelected = selectedQuantity > 0
               const partnerHas = partnerOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
@@ -163,7 +176,16 @@ export default function TradesTab({
           </div>
         ) : (
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
-            {filteredPartnerTradeCards.map((card) => {
+            {[...filteredPartnerTradeCards]
+              .sort((left, right) => {
+                const leftNeed = meOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true && requestNeededKeys[left.key] === true
+                const rightNeed = meOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true && requestNeededKeys[right.key] === true
+                if (leftNeed !== rightNeed) {
+                  return leftNeed ? -1 : 1
+                }
+                return right.count === left.count ? 0 : right.count - left.count
+              })
+              .map((card) => {
               const selectedQuantity = selectedRequestCards[card.key] ?? 0
               const isSelected = selectedQuantity > 0
               const iHave = meOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
