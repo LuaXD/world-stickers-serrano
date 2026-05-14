@@ -12,7 +12,8 @@ import useAlbumComputed from './hooks/useAlbumComputed'
 import useTradeRequests from './hooks/useTradeRequests'
 import useTradeSelection from './hooks/useTradeSelection'
 import useUsersData from './hooks/useUsersData'
-import type { ActiveOwners, AppTab } from './types/stickers'
+import type { SelectedTradeLine } from './hooks/useTradeSelection'
+import type { ActiveOwners, AppTab, TradeRequest } from './types/stickers'
 
 function getStickerRef(username: string, sectionCode: string, stickerNumber: number): DatabaseReference {
   return ref(database, `users/${username}/stickers/${sectionCode}/${stickerNumber}`)
@@ -93,10 +94,14 @@ function App() {
     updateOfferQuantity,
     updateRequestQuantity,
     resetTradeSelection,
+    loadSelectionFromTrade,
   } = useTradeSelection({
     myTradeCards,
     partnerTradeCards,
   })
+  const offerQuantityTotal = selectedOfferTradeCards.reduce((sum, line) => sum + line.quantity, 0)
+  const requestQuantityTotal = selectedRequestTradeCards.reduce((sum, line) => sum + line.quantity, 0)
+  const [editingTradeId, setEditingTradeId] = useState<string | null>(null)
 
   const {
     tradeStatus,
@@ -112,6 +117,8 @@ function App() {
     selectedRequestTradeCards,
     resetTradeSelection,
     setError,
+    editingTradeId,
+    setEditingTradeId,
   })
 
   const activeOwnersList = useMemo(() => {
@@ -352,6 +359,31 @@ function App() {
     void handleToggleSticker(normalizedCode, stickerNumber)
   }
 
+  function handleEditTrade(trade: TradeRequest): void {
+    if (activeSelectedUser == null) {
+      return
+    }
+
+    const partner = trade.from === activeSelectedUser ? trade.to : trade.from
+    setActiveTab('trades')
+    setActiveOwners(null)
+    setTradePartnerSelection(partner)
+
+    const offerSource = trade.from === activeSelectedUser ? trade.offered : trade.requested
+    const requestSource = trade.from === activeSelectedUser ? trade.requested : trade.offered
+
+    const mapLineToSelection = (line: TradeRequest['offered'][number]): SelectedTradeLine => ({
+      key: `${line.section}:${line.sticker}`,
+      sectionCode: line.section,
+      stickerNumber: line.sticker,
+      quantity: line.quantity,
+    })
+
+    loadSelectionFromTrade(offerSource.map(mapLineToSelection), requestSource.map(mapLineToSelection))
+    setEditingTradeId(trade.id)
+    setTradeStatus(`Editing trade with ${partner}`)
+  }
+
   function formatPendingTradeLine(sectionCode: string, stickerNumber: number, quantity: number): string {
     return `${sectionCode} ${formatStickerLabel(sectionCode, stickerNumber)} x${quantity}`
   }
@@ -471,6 +503,9 @@ function App() {
             onDecline={(tradeId) => {
               void handleDeclineTradeRequest(tradeId)
             }}
+            onEdit={(trade) => {
+              handleEditTrade(trade)
+            }}
           />
         ) : null}
 
@@ -484,6 +519,8 @@ function App() {
             selectedRequestCards={selectedRequestCards}
             selectedOfferCount={selectedOfferTradeCards.length}
             selectedRequestCount={selectedRequestTradeCards.length}
+            offerQuantityTotal={offerQuantityTotal}
+            requestQuantityTotal={requestQuantityTotal}
           partnerOwnedStickers={activeTradePartnerStickers}
           meOwnedStickers={selectedUserStickers}
           offerNeededKeys={offerNeededKeys}

@@ -13,6 +13,8 @@ type UseTradeRequestsParams = {
   selectedRequestTradeCards: SelectedTradeLine[]
   resetTradeSelection: () => void
   setError: Dispatch<SetStateAction<string | null>>
+  editingTradeId: string | null
+  setEditingTradeId: Dispatch<SetStateAction<string | null>>
 }
 
 function useTradeRequests({
@@ -22,6 +24,8 @@ function useTradeRequests({
   selectedRequestTradeCards,
   resetTradeSelection,
   setError,
+  editingTradeId,
+  setEditingTradeId,
 }: UseTradeRequestsParams): {
   tradeRequests: TradeRequest[]
   tradeStatus: string | null
@@ -195,7 +199,20 @@ function useTradeRequests({
 
     try {
       const tradeRequestsRef = ref(database, 'tradeRequests')
-      await set(push(tradeRequestsRef), {
+      const newTradeRef = push(tradeRequestsRef)
+      const newTradeId = newTradeRef.key
+
+      if (editingTradeId != null) {
+        const previousTradeRef = ref(database, `tradeRequests/${editingTradeId}`)
+        await update(previousTradeRef, {
+          status: 'superseded',
+          supersededBy: newTradeId ?? null,
+          resolvedAt: serverTimestamp(),
+          resolvedBy: activeSelectedUser,
+        })
+      }
+
+      await set(newTradeRef, {
         from: activeSelectedUser,
         to: activeTradePartner,
         offered: selectedOfferTradeCards.map((card) => ({
@@ -210,6 +227,7 @@ function useTradeRequests({
         })),
         status: 'pending',
         createdAt: serverTimestamp(),
+        replaces: editingTradeId ?? null,
       })
 
       if (activeTradePartner === 'Botas') {
@@ -218,6 +236,7 @@ function useTradeRequests({
         setTradeStatus(`Trade request sent to ${activeTradePartner}.`)
       }
       resetTradeSelection()
+      setEditingTradeId(null)
     } catch {
       setTradeStatus('Could not send trade request right now.')
     }

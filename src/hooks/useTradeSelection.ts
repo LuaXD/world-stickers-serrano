@@ -31,6 +31,7 @@ function useTradeSelection({
   resetTradeSelection: () => void
   setSelectedOfferCards: Dispatch<SetStateAction<Record<string, number>>>
   setSelectedRequestCards: Dispatch<SetStateAction<Record<string, number>>>
+  loadSelectionFromTrade: (offerLines: SelectedTradeLine[], requestLines: SelectedTradeLine[]) => void
 } {
   const [selectedOfferCards, setSelectedOfferCards] = useState<Record<string, number>>({})
   const [selectedRequestCards, setSelectedRequestCards] = useState<Record<string, number>>({})
@@ -125,6 +126,22 @@ function useTradeSelection({
     setSelectedRequestCards({})
   }
 
+  function loadSelectionFromTrade(offerLines: SelectedTradeLine[], requestLines: SelectedTradeLine[]): void {
+    const nextOffer: Record<string, number> = {}
+    const nextRequest: Record<string, number> = {}
+
+    for (const line of offerLines) {
+      nextOffer[line.key] = line.quantity
+    }
+
+    for (const line of requestLines) {
+      nextRequest[line.key] = line.quantity
+    }
+
+    setSelectedOfferCards(nextOffer)
+    setSelectedRequestCards(nextRequest)
+  }
+
   return {
     selectedOfferCards,
     selectedRequestCards,
@@ -141,6 +158,7 @@ function useTradeSelection({
     resetTradeSelection,
     setSelectedOfferCards,
     setSelectedRequestCards,
+    loadSelectionFromTrade,
   }
 }
 

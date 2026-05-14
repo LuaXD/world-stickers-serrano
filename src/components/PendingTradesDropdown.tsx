@@ -6,6 +6,7 @@ type PendingTradesDropdownProps = {
   formatTradeLine: (section: string, sticker: number, quantity: number) => string
   onAccept: (tradeId: string) => void
   onDecline: (tradeId: string) => void
+  onEdit: (trade: TradeRequest) => void
 }
 
 export default function PendingTradesDropdown({
@@ -14,6 +15,7 @@ export default function PendingTradesDropdown({
   formatTradeLine,
   onAccept,
   onDecline,
+  onEdit,
 }: PendingTradesDropdownProps) {
   if (trades.length === 0) {
     return null
@@ -29,6 +31,8 @@ export default function PendingTradesDropdown({
           const isIncoming = trade.to === activeUsername
           const partner = isIncoming ? trade.from : trade.to
           const directionLabel = isIncoming ? `From ${partner}` : `To ${partner}`
+          const totalOffered = trade.offered.reduce((sum, line) => sum + line.quantity, 0)
+          const totalRequested = trade.requested.reduce((sum, line) => sum + line.quantity, 0)
 
           return (
             <article key={trade.id} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
@@ -37,6 +41,9 @@ export default function PendingTradesDropdown({
                 <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-300">
                   {trade.status}
                 </span>
+              </div>
+              <div className="mt-1 text-[11px] text-zinc-400">
+                {totalOffered} offered · {totalRequested} requested
               </div>
               <div className="mt-2 text-[11px] text-zinc-300">
                 {trade.offered.length === 0 ? 'Gives nothing' : 'Gives'}
@@ -58,22 +65,35 @@ export default function PendingTradesDropdown({
                   </li>
                 ))}
               </ul>
-              {isIncoming && trade.status === 'pending' ? (
-                <div className="mt-3 grid grid-cols-2 gap-2">
+              {trade.status === 'pending' ? (
+                <div
+                  className={`mt-3 grid gap-2 ${isIncoming ? 'grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'}`}
+                >
                   <button
                     type="button"
-                    className="h-9 rounded-lg bg-emerald-600 text-xs font-semibold text-white active:scale-[0.98]"
-                    onClick={() => onAccept(trade.id)}
+                    className="h-9 rounded-lg border border-blue-400/60 bg-blue-500/20 text-xs font-semibold text-blue-100 active:scale-[0.98]"
+                    onClick={() => onEdit(trade)}
                   >
-                    Accept
+                    Edit
                   </button>
-                  <button
-                    type="button"
-                    className="h-9 rounded-lg bg-zinc-700 text-xs font-semibold text-zinc-100 active:scale-[0.98]"
-                    onClick={() => onDecline(trade.id)}
-                  >
-                    Decline
-                  </button>
+                  {isIncoming ? (
+                    <>
+                      <button
+                        type="button"
+                        className="h-9 rounded-lg bg-emerald-600 text-xs font-semibold text-white active:scale-[0.98]"
+                        onClick={() => onAccept(trade.id)}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="h-9 rounded-lg bg-zinc-700 text-xs font-semibold text-zinc-100 active:scale-[0.98]"
+                        onClick={() => onDecline(trade.id)}
+                      >
+                        Decline
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </article>

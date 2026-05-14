@@ -444,6 +444,8 @@ export function parseTradeRequestsSnapshot(value: unknown): TradeRequest[] {
       requested?: unknown
       status?: unknown
       createdAt?: unknown
+      replaces?: unknown
+      supersededBy?: unknown
     }
 
     if (typeof trade.from !== 'string' || typeof trade.to !== 'string') {
@@ -451,7 +453,9 @@ export function parseTradeRequestsSnapshot(value: unknown): TradeRequest[] {
     }
 
     const status: TradeStatus =
-      trade.status === 'accepted' || trade.status === 'declined' ? trade.status : 'pending'
+      trade.status === 'accepted' || trade.status === 'declined' || trade.status === 'superseded'
+        ? trade.status
+        : 'pending'
     const offered = parseTradeLines(trade.offered)
     const requested = parseTradeLines(trade.requested)
 
@@ -467,6 +471,9 @@ export function parseTradeRequestsSnapshot(value: unknown): TradeRequest[] {
       requested,
       status,
       createdAt: typeof trade.createdAt === 'number' ? trade.createdAt : null,
+      replaces: typeof trade.replaces === 'string' && trade.replaces.length > 0 ? trade.replaces : null,
+      supersededBy:
+        typeof trade.supersededBy === 'string' && trade.supersededBy.length > 0 ? trade.supersededBy : null,
     })
   }
 

@@ -35,7 +35,7 @@ export type TradeLine = {
   quantity: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined'
+export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'superseded'
 
 export type TradeRequest = {
   id: string
@@ -45,4 +45,6 @@ export type TradeRequest = {
   requested: TradeLine[]
   status: TradeStatus
   createdAt: number | null
+  replaces?: string | null
+  supersededBy?: string | null
 }

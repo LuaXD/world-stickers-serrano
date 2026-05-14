@@ -13,6 +13,8 @@ type TradesTabProps = {
   selectedRequestCards: Record<string, number>
   selectedOfferCount: number
   selectedRequestCount: number
+  offerQuantityTotal: number
+  requestQuantityTotal: number
   onPartnerChange: (partner: string | null) => void
   onToggleOfferCard: (cardKey: string) => void
   onToggleRequestCard: (cardKey: string) => void
@@ -32,6 +34,8 @@ export default function TradesTab({
   selectedRequestCards,
   selectedOfferCount,
   selectedRequestCount,
+  offerQuantityTotal,
+  requestQuantityTotal,
   partnerOwnedStickers,
   meOwnedStickers,
   onPartnerChange,
@@ -87,10 +91,25 @@ export default function TradesTab({
                 const rightNeeds =
                   partnerOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
                   offerNeededKeys[right.key] === true
-                if (leftNeeds !== rightNeeds) {
-                  return leftNeeds ? -1 : 1
+                const leftPriority = [
+                  leftNeeds ? 0 : 1,
+                  left.sectionCode === 'FWC' ? 0 : 1,
+                  left.stickerNumber === 1 ? 0 : 1,
+                  -(left.count ?? 0),
+                ]
+                const rightPriority = [
+                  rightNeeds ? 0 : 1,
+                  right.sectionCode === 'FWC' ? 0 : 1,
+                  right.stickerNumber === 1 ? 0 : 1,
+                  -(right.count ?? 0),
+                ]
+
+                for (let index = 0; index < leftPriority.length; index += 1) {
+                  if (leftPriority[index] !== rightPriority[index]) {
+                    return leftPriority[index] - rightPriority[index]
+                  }
                 }
-                return right.count === left.count ? 0 : right.count - left.count
+                return 0
               })
               .map((card) => {
               const selectedQuantity = selectedOfferCards[card.key] ?? 0
@@ -178,12 +197,32 @@ export default function TradesTab({
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {[...filteredPartnerTradeCards]
               .sort((left, right) => {
-                const leftNeed = meOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true && requestNeededKeys[left.key] === true
-                const rightNeed = meOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true && requestNeededKeys[right.key] === true
-                if (leftNeed !== rightNeed) {
-                  return leftNeed ? -1 : 1
+                const leftNeed =
+                  meOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true &&
+                  requestNeededKeys[left.key] === true
+                const rightNeed =
+                  meOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
+                  requestNeededKeys[right.key] === true
+
+                const leftPriority = [
+                  leftNeed ? 0 : 1,
+                  left.sectionCode === 'FWC' ? 0 : 1,
+                  left.stickerNumber === 1 ? 0 : 1,
+                  -(left.count ?? 0),
+                ]
+                const rightPriority = [
+                  rightNeed ? 0 : 1,
+                  right.sectionCode === 'FWC' ? 0 : 1,
+                  right.stickerNumber === 1 ? 0 : 1,
+                  -(right.count ?? 0),
+                ]
+
+                for (let index = 0; index < leftPriority.length; index += 1) {
+                  if (leftPriority[index] !== rightPriority[index]) {
+                    return leftPriority[index] - rightPriority[index]
+                  }
                 }
-                return right.count === left.count ? 0 : right.count - left.count
+                return 0
               })
               .map((card) => {
               const selectedQuantity = selectedRequestCards[card.key] ?? 0
@@ -241,6 +280,11 @@ export default function TradesTab({
           </ul>
         )}
       </article>
+
+      <div className="flex items-center justify-between text-xs text-zinc-400">
+        <span>Offer qty: {offerQuantityTotal}</span>
+        <span>Request qty: {requestQuantityTotal}</span>
+      </div>
 
       <button
         type="button"
