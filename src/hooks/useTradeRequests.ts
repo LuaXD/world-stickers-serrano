@@ -31,6 +31,9 @@ function useTradeRequests({
   tradeStatus: string | null
   setTradeStatus: Dispatch<SetStateAction<string | null>>
   pendingTrades: TradeRequest[]
+  pendingOutgoingMap: Record<string, Record<string, number>>
+  incomingPendingMap: Record<string, Record<string, number>>
+  partnerIncomingMap: Record<string, Record<string, number>>
   handleSendTradeRequest: () => Promise<void>
   handleAcceptTradeRequest: (tradeId: string) => Promise<void>
   handleDeclineTradeRequest: (tradeId: string) => Promise<void>
@@ -96,6 +99,99 @@ function useTradeRequests({
       return trade.from === activeSelectedUser || trade.to === activeSelectedUser
     })
   }, [activeSelectedUser, tradeRequests])
+
+  const pendingOutgoingMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    if (activeSelectedUser == null) {
+      return map
+    }
+
+    for (const trade of tradeRequests) {
+      if (trade.status !== 'pending') {
+        continue
+      }
+
+      const lines =
+        trade.from === activeSelectedUser
+          ? trade.offered
+          : trade.to === activeSelectedUser
+            ? trade.requested
+            : null
+
+      if (lines == null) {
+        continue
+      }
+
+      for (const line of lines) {
+        const sectionMap = (map[line.section] ??= {})
+        sectionMap[String(line.sticker)] = (sectionMap[String(line.sticker)] ?? 0) + line.quantity
+      }
+    }
+
+    return map
+  }, [activeSelectedUser, tradeRequests])
+
+  const incomingPendingMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    if (activeSelectedUser == null) {
+      return map
+    }
+
+    for (const trade of tradeRequests) {
+      if (trade.status !== 'pending') {
+        continue
+      }
+
+      const lines =
+        trade.from === activeSelectedUser
+          ? trade.requested
+          : trade.to === activeSelectedUser
+            ? trade.offered
+            : null
+
+      if (lines == null) {
+        continue
+      }
+
+      for (const line of lines) {
+        const sectionMap = (map[line.section] ??= {})
+        sectionMap[String(line.sticker)] = (sectionMap[String(line.sticker)] ?? 0) + line.quantity
+      }
+    }
+
+    return map
+  }, [activeSelectedUser, tradeRequests])
+
+  const partnerIncomingMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    if (activeTradePartner == null) {
+      return map
+    }
+
+    for (const trade of tradeRequests) {
+      if (trade.status !== 'pending') {
+        continue
+      }
+
+      const lines =
+        trade.from === activeTradePartner
+          ? trade.requested
+          : trade.to === activeTradePartner
+            ? trade.offered
+            : null
+
+      if (lines == null) {
+        continue
+      }
+
+      for (const line of lines) {
+        const sectionMap = (map[line.section] ??= {})
+        sectionMap[String(line.sticker)] = (sectionMap[String(line.sticker)] ?? 0) + line.quantity
+      }
+    }
+
+    return map
+  }, [activeTradePartner, tradeRequests])
 
   function cloneUserRecord(record: UserRecord): UserRecord {
     const stickers: UserRecord['stickers'] = {}
@@ -331,6 +427,9 @@ function useTradeRequests({
     tradeStatus,
     setTradeStatus,
     pendingTrades,
+    pendingOutgoingMap,
+    incomingPendingMap,
+    partnerIncomingMap,
     handleSendTradeRequest,
     handleAcceptTradeRequest,
     handleDeclineTradeRequest,

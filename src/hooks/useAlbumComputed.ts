@@ -51,7 +51,6 @@ function useAlbumComputed({
 
   const selectedUserStickers = selectedUserData.stickers
   const selectedUserDuplicates = selectedUserData.duplicates
-
   const tradeCandidates = useMemo(() => {
     return availableUsers.filter((username) => {
       return activeSelectedUser != null && username !== activeSelectedUser

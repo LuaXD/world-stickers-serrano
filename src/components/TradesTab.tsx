@@ -5,6 +5,9 @@ type TradesTabProps = {
   tradeCandidates: string[]
   filteredMyTradeCards: TradeCard[]
   filteredPartnerTradeCards: TradeCard[]
+  partnerIncoming: Record<string, Record<string, number>>
+  myIncoming: Record<string, Record<string, number>>
+  myLockedOutgoing: Record<string, Record<string, number>>
   partnerOwnedStickers: Record<string, Record<string, true>>
   meOwnedStickers: Record<string, Record<string, true>>
   offerNeededKeys: Record<string, true>
@@ -28,6 +31,9 @@ export default function TradesTab({
   tradeCandidates,
   filteredMyTradeCards,
   filteredPartnerTradeCards,
+  partnerIncoming,
+  myIncoming,
+  myLockedOutgoing,
   offerNeededKeys,
   requestNeededKeys,
   selectedOfferCards,
@@ -87,10 +93,12 @@ export default function TradesTab({
               .sort((left, right) => {
                 const leftNeeds =
                   partnerOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true &&
-                  offerNeededKeys[left.key] === true
+                  offerNeededKeys[left.key] === true &&
+                  (partnerIncoming[left.sectionCode]?.[String(left.stickerNumber)] ?? 0) === 0
                 const rightNeeds =
                   partnerOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
-                  offerNeededKeys[right.key] === true
+                  offerNeededKeys[right.key] === true &&
+                  (partnerIncoming[right.sectionCode]?.[String(right.stickerNumber)] ?? 0) === 0
                 const leftPriority = [
                   leftNeeds ? 0 : 1,
                   left.sectionCode === 'FWC' ? 0 : 1,
@@ -111,17 +119,25 @@ export default function TradesTab({
                 }
                 return 0
               })
+              .filter((card) => {
+                const locked = myLockedOutgoing[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
+                const available = Math.max(0, (card.count ?? 0) - locked)
+                return available > 0
+              })
               .map((card) => {
-              const selectedQuantity = selectedOfferCards[card.key] ?? 0
-              const isSelected = selectedQuantity > 0
-              const partnerHas = partnerOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
-              const partnerNeeds = offerNeededKeys[card.key] === true
-              const needsBadge =
-                partnerHas || !partnerNeeds
-                  ? null
-                  : activeTradePartner === 'Botas'
-                    ? 'It need'
-                    : 'They need'
+                const locked = myLockedOutgoing[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
+                const availableCount = Math.max(0, (card.count ?? 0) - locked)
+                const selectedQuantity = selectedOfferCards[card.key] ?? 0
+                const isSelected = selectedQuantity > 0
+                const partnerHas = partnerOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
+                const partnerIncomingQty = partnerIncoming[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
+                const partnerNeeds = offerNeededKeys[card.key] === true && partnerIncomingQty === 0
+                const needsBadge =
+                  partnerHas || !partnerNeeds
+                    ? null
+                    : activeTradePartner === 'Botas'
+                      ? 'It need'
+                      : 'They need'
 
               return (
                 <li key={`offer-${card.key}`}>
@@ -132,9 +148,17 @@ export default function TradesTab({
                         ? 'border-blue-400/70 bg-blue-500/15 text-blue-100'
                         : partnerNeeds
                           ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-100'
-                          : 'border-zinc-700 bg-zinc-950 text-zinc-100'
+                          : availableCount <= 0
+                            ? 'border-purple-500/70 bg-purple-500/10 text-purple-100'
+                            : 'border-zinc-700 bg-zinc-950 text-zinc-100'
                     }`}
-                    onClick={() => onToggleOfferCard(card.key)}
+                    disabled={availableCount <= 0 && !isSelected}
+                    onClick={() => {
+                      if (availableCount <= 0 && !isSelected) {
+                        return
+                      }
+                      onToggleOfferCard(card.key)
+                    }}
                   >
                     <span>
                       {card.label}
@@ -145,7 +169,12 @@ export default function TradesTab({
                       )}
                     </span>
                     <span className="font-semibold text-zinc-200">
-                      {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
+                      {isSelected ? `${selectedQuantity}/${availableCount}` : `x${availableCount}`}
+                      {locked > 0 ? (
+                        <span className="ml-2 rounded bg-purple-600/40 px-2 py-[2px] text-[10px] text-purple-50">
+                          locked {locked}
+                        </span>
+                      ) : null}
                     </span>
                   </button>
                   {isSelected ? (
@@ -164,7 +193,7 @@ export default function TradesTab({
                       <button
                         type="button"
                         className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
-                        disabled={selectedQuantity >= card.count}
+                        disabled={selectedQuantity >= availableCount}
                         onClick={() => onUpdateOfferQuantity(card.key, selectedQuantity + 1)}
                       >
                         +
@@ -199,10 +228,12 @@ export default function TradesTab({
               .sort((left, right) => {
                 const leftNeed =
                   meOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true &&
-                  requestNeededKeys[left.key] === true
+                  requestNeededKeys[left.key] === true &&
+                  (myIncoming[left.sectionCode]?.[String(left.stickerNumber)] ?? 0) === 0
                 const rightNeed =
                   meOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
-                  requestNeededKeys[right.key] === true
+                  requestNeededKeys[right.key] === true &&
+                  (myIncoming[right.sectionCode]?.[String(right.stickerNumber)] ?? 0) === 0
 
                 const leftPriority = [
                   leftNeed ? 0 : 1,
@@ -228,7 +259,8 @@ export default function TradesTab({
               const selectedQuantity = selectedRequestCards[card.key] ?? 0
               const isSelected = selectedQuantity > 0
               const iHave = meOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
-              const iNeed = requestNeededKeys[card.key] === true
+              const incomingMine = myIncoming[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
+              const iNeed = requestNeededKeys[card.key] === true && incomingMine === 0
 
               return (
                 <li key={`request-${card.key}`}>

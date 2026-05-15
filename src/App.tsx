@@ -71,7 +71,6 @@ function App() {
     offerNeededKeys,
     requestNeededKeys,
     ownedCounts,
-    duplicateCounts,
     friendDuplicateOwners,
     totals,
   } = useAlbumComputed({
@@ -107,6 +106,9 @@ function App() {
     tradeStatus,
     setTradeStatus,
     pendingTrades,
+    pendingOutgoingMap,
+    incomingPendingMap,
+    partnerIncomingMap,
     handleSendTradeRequest,
     handleAcceptTradeRequest,
     handleDeclineTradeRequest,
@@ -120,6 +122,40 @@ function App() {
     editingTradeId,
     setEditingTradeId,
   })
+
+  const adjustedUserDuplicates = useMemo(() => {
+    const result: Record<string, Record<string, number>> = {}
+
+    for (const [sectionCode, sectionDuplicates] of Object.entries(selectedUserDuplicates)) {
+      const locked = pendingOutgoingMap[sectionCode] ?? {}
+      const nextSection: Record<string, number> = {}
+
+      for (const [stickerKey, count] of Object.entries(sectionDuplicates)) {
+        const remaining = Math.max(0, count - (locked[stickerKey] ?? 0))
+        if (remaining > 0) {
+          nextSection[stickerKey] = remaining
+        }
+      }
+
+      if (Object.keys(nextSection).length > 0) {
+        result[sectionCode] = nextSection
+      }
+    }
+
+    return result
+  }, [pendingOutgoingMap, selectedUserDuplicates])
+
+  const futureOwnedCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+
+    for (const section of filteredSections) {
+      const baseOwned = Object.keys(selectedUserStickers[section.code] ?? {}).length
+      const incoming = Object.values(incomingPendingMap[section.code] ?? {}).reduce((sum, qty) => sum + qty, 0)
+      counts[section.code] = baseOwned + incoming
+    }
+
+    return counts
+  }, [filteredSections, incomingPendingMap, selectedUserStickers])
 
   const activeOwnersList = useMemo(() => {
     if (activeOwners == null) {
@@ -492,7 +528,7 @@ function App() {
             {tradeStatus}
           </p>
         )}
-        {pendingTrades.length > 0 ? (
+        {activeTab === 'trades' && pendingTrades.length > 0 ? (
           <PendingTradesDropdown
             activeUsername={activeSelectedUser}
             trades={pendingTrades}
@@ -515,16 +551,19 @@ function App() {
             tradeCandidates={tradeCandidates}
             filteredMyTradeCards={filteredMyTradeCards}
             filteredPartnerTradeCards={filteredPartnerTradeCards}
+            partnerIncoming={partnerIncomingMap}
+            myIncoming={incomingPendingMap}
+            myLockedOutgoing={pendingOutgoingMap}
             selectedOfferCards={selectedOfferCards}
             selectedRequestCards={selectedRequestCards}
             selectedOfferCount={selectedOfferTradeCards.length}
             selectedRequestCount={selectedRequestTradeCards.length}
             offerQuantityTotal={offerQuantityTotal}
             requestQuantityTotal={requestQuantityTotal}
-          partnerOwnedStickers={activeTradePartnerStickers}
-          meOwnedStickers={selectedUserStickers}
-          offerNeededKeys={offerNeededKeys}
-          requestNeededKeys={requestNeededKeys}
+            partnerOwnedStickers={activeTradePartnerStickers}
+            meOwnedStickers={selectedUserStickers}
+            offerNeededKeys={offerNeededKeys}
+            requestNeededKeys={requestNeededKeys}
             onPartnerChange={(partner) => {
               setTradePartnerSelection(partner)
               resetTradeSelection()
@@ -556,9 +595,11 @@ function App() {
             expandedSections={expandedSections}
             selectedUserStickers={selectedUserStickers}
             ownedCounts={ownedCounts}
-            duplicateCounts={duplicateCounts}
+            futureOwnedCounts={futureOwnedCounts}
             showOwnedBySection={showOwnedBySection}
             selectedUserDuplicates={selectedUserDuplicates}
+            adjustedUserDuplicates={adjustedUserDuplicates}
+            incomingPendingMap={incomingPendingMap}
             friendDuplicateOwners={friendDuplicateOwners}
             recentlyMarkedKeys={recentlyMarkedKeys}
             onToggleSection={handleToggleSection}

@@ -13,9 +13,11 @@ type AlbumSectionsProps = {
   expandedSections: Record<string, boolean>
   selectedUserStickers: UserStickers
   ownedCounts: Record<string, number>
-  duplicateCounts: Record<string, number>
+  futureOwnedCounts: Record<string, number>
   showOwnedBySection: Record<string, boolean>
   selectedUserDuplicates: UserDuplicates
+  adjustedUserDuplicates: UserDuplicates
+  incomingPendingMap: Record<string, Record<string, number>>
   friendDuplicateOwners: Record<string, string[]>
   recentlyMarkedKeys: Record<string, true>
   onToggleSection: (code: string) => void
@@ -37,9 +39,11 @@ export default function AlbumSections({
   expandedSections,
   selectedUserStickers,
   ownedCounts,
-  duplicateCounts,
+  futureOwnedCounts,
   showOwnedBySection,
   selectedUserDuplicates,
+  adjustedUserDuplicates,
+  incomingPendingMap,
   friendDuplicateOwners,
   recentlyMarkedKeys,
   onToggleSection,
@@ -60,7 +64,11 @@ export default function AlbumSections({
         const isExpanded = isSearching || expandedSections[section.code] === true
         const ownedSet = selectedUserStickers[section.code] ?? {}
         const ownedCount = ownedCounts[section.code] ?? 0
-        const duplicateCount = duplicateCounts[section.code] ?? 0
+        const futureOwned = futureOwnedCounts[section.code] ?? ownedCount
+        const availableDuplicateCount = Object.values(adjustedUserDuplicates[section.code] ?? {}).reduce(
+          (sum, qty) => sum + qty,
+          0,
+        )
         const stickerNumbers = getStickerNumbers(section.code, section.stickerCount)
         const showOwned = showOwnedBySection[section.code] === true
         const visibleAlbumNumbers = showOwned
@@ -78,6 +86,9 @@ export default function AlbumSections({
                 .map((stickerNumber) => {
                   const stickerKey = String(stickerNumber)
                   const currentDuplicate = selectedUserDuplicates[section.code]?.[stickerKey] ?? 0
+                  const adjustedDuplicate = adjustedUserDuplicates[section.code]?.[stickerKey] ?? 0
+                  const locked = Math.max(0, currentDuplicate - adjustedDuplicate)
+                  const available = adjustedDuplicate
                   const isOwned = selectedUserStickers[section.code]?.[stickerKey] === true
                   const shouldDisplay = isOwned || currentDuplicate > 0
 
@@ -89,8 +100,10 @@ export default function AlbumSections({
                     stickerNumber,
                     stickerKey,
                     currentDuplicate,
+                    available,
                     isOwned,
                     isOrphan: !isOwned && currentDuplicate > 0,
+                    locked,
                   }
                 })
                 .filter((entry): entry is NonNullable<typeof entry> => entry != null)
@@ -119,7 +132,11 @@ export default function AlbumSections({
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-semibold">
-                  {activeTab === 'duplicates' ? duplicateCount : `${ownedCount}/${section.stickerCount}`}
+                  {activeTab === 'duplicates'
+                    ? availableDuplicateCount
+                    : `${ownedCount}/${section.stickerCount}${
+                        futureOwned > ownedCount ? ` (+${futureOwned - ownedCount})` : ''
+                      }`}
                 </span>
                 <span className="text-zinc-400">{isExpanded ? '⌃' : '⌄'}</span>
               </div>
@@ -153,6 +170,8 @@ export default function AlbumSections({
                         const ownerMapKey = `${section.code}:${stickerKey}`
                         const ownersList = friendDuplicateOwners[ownerMapKey] ?? []
                         const hasOwners = ownersList.length > 0
+                        const incomingQty = incomingPendingMap[section.code]?.[stickerKey] ?? 0
+                        const isIncoming = !isOwned && incomingQty > 0
                         const ownersMeta: ActiveOwners | null = hasOwners
                           ? {
                               key: ownerMapKey,
@@ -167,9 +186,11 @@ export default function AlbumSections({
                             className={`h-11 rounded-xl border text-[20px] font-semibold leading-none active:scale-[0.97] ${
                               isOwned
                                 ? 'border-white bg-white text-zinc-900'
-                                : hasOwners
-                                  ? 'border-amber-400/80 bg-amber-500/10 text-amber-200'
-                                  : 'border-zinc-500 bg-transparent text-zinc-100'
+                                : isIncoming
+                                  ? 'border-violet-400/80 bg-violet-500/20 text-violet-200'
+                                  : hasOwners
+                                    ? 'border-amber-400/80 bg-amber-500/10 text-amber-200'
+                                    : 'border-zinc-500 bg-transparent text-zinc-100'
                             }`}
                             onMouseEnter={() => {
                               if (ownersMeta != null) {
@@ -195,7 +216,8 @@ export default function AlbumSections({
                 ) : (
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
                     {duplicateEntries.map((entry) => {
-                      const { stickerNumber, currentDuplicate, isOrphan } = entry
+                      const { stickerNumber, available, isOrphan, locked } = entry
+                      const incomingQty = incomingPendingMap[section.code]?.[String(stickerNumber)] ?? 0
 
                       return (
                         <div
@@ -216,14 +238,18 @@ export default function AlbumSections({
                               isOrphan ? 'text-rose-200' : 'text-zinc-300'
                             }`}
                           >
-                            {currentDuplicate}
+                            {available}
+                            {locked > 0 ? <span className="ml-1 text-[10px] text-purple-200">locked {locked}</span> : null}
+                            {incomingQty > 0 ? (
+                              <span className="ml-1 text-[10px] text-violet-200">+{incomingQty} incoming</span>
+                            ) : null}
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <button
                               type="button"
-                              disabled={currentDuplicate <= 0}
+                              disabled={available <= 0}
                               className={`h-8 rounded-full text-lg ${
-                                currentDuplicate <= 0
+                                available <= 0
                                   ? 'bg-zinc-800 text-zinc-500'
                                   : 'bg-zinc-700 text-zinc-100 active:scale-[0.97]'
                               }`}
