@@ -109,6 +109,7 @@ function App() {
     pendingOutgoingMap,
     incomingPendingMap,
     partnerIncomingMap,
+    partnerLockedOutgoingMap,
     handleSendTradeRequest,
     handleAcceptTradeRequest,
     handleDeclineTradeRequest,
@@ -554,6 +555,7 @@ function App() {
             partnerIncoming={partnerIncomingMap}
             myIncoming={incomingPendingMap}
             myLockedOutgoing={pendingOutgoingMap}
+            partnerLockedOutgoing={partnerLockedOutgoingMap}
             selectedOfferCards={selectedOfferCards}
             selectedRequestCards={selectedRequestCards}
             selectedOfferCount={selectedOfferTradeCards.length}

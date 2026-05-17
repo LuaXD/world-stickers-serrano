@@ -34,6 +34,7 @@ function useTradeRequests({
   pendingOutgoingMap: Record<string, Record<string, number>>
   incomingPendingMap: Record<string, Record<string, number>>
   partnerIncomingMap: Record<string, Record<string, number>>
+  partnerLockedOutgoingMap: Record<string, Record<string, number>>
   handleSendTradeRequest: () => Promise<void>
   handleAcceptTradeRequest: (tradeId: string) => Promise<void>
   handleDeclineTradeRequest: (tradeId: string) => Promise<void>
@@ -178,6 +179,37 @@ function useTradeRequests({
           ? trade.requested
           : trade.to === activeTradePartner
             ? trade.offered
+            : null
+
+      if (lines == null) {
+        continue
+      }
+
+      for (const line of lines) {
+        const sectionMap = (map[line.section] ??= {})
+        sectionMap[String(line.sticker)] = (sectionMap[String(line.sticker)] ?? 0) + line.quantity
+      }
+    }
+
+    return map
+  }, [activeTradePartner, tradeRequests])
+
+  const partnerLockedOutgoingMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    if (activeTradePartner == null) {
+      return map
+    }
+
+    for (const trade of tradeRequests) {
+      if (trade.status !== 'pending') {
+        continue
+      }
+
+      const lines =
+        trade.from === activeTradePartner
+          ? trade.offered
+          : trade.to === activeTradePartner
+            ? trade.requested
             : null
 
       if (lines == null) {
@@ -430,6 +462,7 @@ function useTradeRequests({
     pendingOutgoingMap,
     incomingPendingMap,
     partnerIncomingMap,
+    partnerLockedOutgoingMap,
     handleSendTradeRequest,
     handleAcceptTradeRequest,
     handleDeclineTradeRequest,

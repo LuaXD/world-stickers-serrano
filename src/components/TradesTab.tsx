@@ -8,6 +8,7 @@ type TradesTabProps = {
   partnerIncoming: Record<string, Record<string, number>>
   myIncoming: Record<string, Record<string, number>>
   myLockedOutgoing: Record<string, Record<string, number>>
+  partnerLockedOutgoing: Record<string, Record<string, number>>
   partnerOwnedStickers: Record<string, Record<string, true>>
   meOwnedStickers: Record<string, Record<string, true>>
   offerNeededKeys: Record<string, true>
@@ -34,6 +35,7 @@ export default function TradesTab({
   partnerIncoming,
   myIncoming,
   myLockedOutgoing,
+  partnerLockedOutgoing,
   offerNeededKeys,
   requestNeededKeys,
   selectedOfferCards,
@@ -263,7 +265,18 @@ export default function TradesTab({
                 }
                 return (right.count ?? 0) - (left.count ?? 0)
               })
+              .filter((card) => {
+                const isSelected = (selectedRequestCards[card.key] ?? 0) > 0
+                if (isSelected) {
+                  return true
+                }
+                const locked = partnerLockedOutgoing[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
+                const available = Math.max(0, (card.count ?? 0) - locked)
+                return available > 0
+              })
               .map((card) => {
+              const partnerLocked = partnerLockedOutgoing[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
+              const availableCount = Math.max(0, (card.count ?? 0) - partnerLocked)
               const selectedQuantity = selectedRequestCards[card.key] ?? 0
               const isSelected = selectedQuantity > 0
               const iHave = meOwnedStickers[card.sectionCode]?.[String(card.stickerNumber)] === true
@@ -288,7 +301,7 @@ export default function TradesTab({
                       {iHave ? null : <span className="ml-2 rounded bg-violet-600/30 px-2 py-[2px] text-[10px] text-violet-50">You need</span>}
                     </span>
                     <span className="font-semibold text-zinc-200">
-                      {isSelected ? `${selectedQuantity}/${card.count}` : `x${card.count}`}
+                      {isSelected ? `${selectedQuantity}/${availableCount}` : `x${availableCount}`}
                     </span>
                   </button>
                   {isSelected ? (
@@ -312,7 +325,7 @@ export default function TradesTab({
                       <button
                         type="button"
                         className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
-                        disabled={selectedQuantity >= card.count}
+                        disabled={selectedQuantity >= availableCount}
                         onClick={() => onUpdateRequestQuantity(card.key, selectedQuantity + 1)}
                       >
                         +
