@@ -3,6 +3,7 @@ export type SectionDefinition = {
   name: string
   flag: string
   stickerCount: number
+  group?: string | null
 }
 
 export type UserStickers = Record<string, Record<string, true>>

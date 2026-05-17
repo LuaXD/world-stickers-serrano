@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type {
   ActiveOwners,
   AppTab,
@@ -57,9 +58,29 @@ export default function AlbumSections({
   getStickerNumbers,
   formatStickerLabel,
 }: AlbumSectionsProps) {
+  const [hideCompleted, setHideCompleted] = useState(false)
+
+  const visibleSections = hideCompleted && activeTab === 'album'
+    ? filteredSections.filter((section) => {
+        const owned = ownedCounts[section.code] ?? 0
+        return owned < section.stickerCount
+      })
+    : filteredSections
+
   return (
     <section className="mt-4 space-y-3">
-      {filteredSections.map((section) => {
+      {activeTab === 'album' ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="rounded-full border border-zinc-700 px-3 py-1 text-[11px] text-zinc-200 active:scale-[0.98]"
+            onClick={() => setHideCompleted(!hideCompleted)}
+          >
+            {hideCompleted ? 'Show completed' : 'Hide completed'}
+          </button>
+        </div>
+      ) : null}
+      {visibleSections.map((section) => {
         const isSearching = searchTerm.trim().length > 0
         const isExpanded = isSearching || expandedSections[section.code] === true
         const ownedSet = selectedUserStickers[section.code] ?? {}
@@ -129,6 +150,11 @@ export default function AlbumSections({
                 >
                   {section.code}
                 </span>
+                {section.group != null ? (
+                  <span className="rounded bg-zinc-700/60 px-2 py-0.5 text-[10px] font-medium text-zinc-300">
+                    {section.group}
+                  </span>
+                ) : null}
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-semibold">
