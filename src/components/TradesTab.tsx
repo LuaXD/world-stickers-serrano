@@ -91,6 +91,11 @@ export default function TradesTab({
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {[...filteredMyTradeCards]
               .sort((left, right) => {
+                const leftSelected = (selectedOfferCards[left.key] ?? 0) > 0
+                const rightSelected = (selectedOfferCards[right.key] ?? 0) > 0
+                if (leftSelected !== rightSelected) {
+                  return leftSelected ? -1 : 1
+                }
                 const leftNeeds =
                   partnerOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true &&
                   offerNeededKeys[left.key] === true &&
@@ -99,27 +104,26 @@ export default function TradesTab({
                   partnerOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
                   offerNeededKeys[right.key] === true &&
                   (partnerIncoming[right.sectionCode]?.[String(right.stickerNumber)] ?? 0) === 0
-                const leftPriority = [
-                  leftNeeds ? 0 : 1,
-                  left.sectionCode === 'FWC' ? 0 : 1,
-                  left.stickerNumber === 1 ? 0 : 1,
-                  -(left.count ?? 0),
-                ]
-                const rightPriority = [
-                  rightNeeds ? 0 : 1,
-                  right.sectionCode === 'FWC' ? 0 : 1,
-                  right.stickerNumber === 1 ? 0 : 1,
-                  -(right.count ?? 0),
-                ]
-
-                for (let index = 0; index < leftPriority.length; index += 1) {
-                  if (leftPriority[index] !== rightPriority[index]) {
-                    return leftPriority[index] - rightPriority[index]
-                  }
+                if (leftNeeds !== rightNeeds) {
+                  return leftNeeds ? -1 : 1
                 }
-                return 0
+                const leftFwc = left.sectionCode === 'FWC'
+                const rightFwc = right.sectionCode === 'FWC'
+                if (leftFwc !== rightFwc) {
+                  return leftFwc ? -1 : 1
+                }
+                const leftFig1 = left.stickerNumber === 1
+                const rightFig1 = right.stickerNumber === 1
+                if (leftFig1 !== rightFig1) {
+                  return leftFig1 ? -1 : 1
+                }
+                return (right.count ?? 0) - (left.count ?? 0)
               })
               .filter((card) => {
+                const isSelected = (selectedOfferCards[card.key] ?? 0) > 0
+                if (isSelected) {
+                  return true
+                }
                 const locked = myLockedOutgoing[card.sectionCode]?.[String(card.stickerNumber)] ?? 0
                 const available = Math.max(0, (card.count ?? 0) - locked)
                 return available > 0
@@ -182,8 +186,13 @@ export default function TradesTab({
                       <button
                         type="button"
                         className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
-                        disabled={selectedQuantity <= 1}
-                        onClick={() => onUpdateOfferQuantity(card.key, selectedQuantity - 1)}
+                        onClick={() => {
+                          if (selectedQuantity <= 1) {
+                            onToggleOfferCard(card.key)
+                          } else {
+                            onUpdateOfferQuantity(card.key, selectedQuantity - 1)
+                          }
+                        }}
                       >
                         −
                       </button>
@@ -226,6 +235,11 @@ export default function TradesTab({
           <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {[...filteredPartnerTradeCards]
               .sort((left, right) => {
+                const leftSelected = (selectedRequestCards[left.key] ?? 0) > 0
+                const rightSelected = (selectedRequestCards[right.key] ?? 0) > 0
+                if (leftSelected !== rightSelected) {
+                  return leftSelected ? -1 : 1
+                }
                 const leftNeed =
                   meOwnedStickers[left.sectionCode]?.[String(left.stickerNumber)] !== true &&
                   requestNeededKeys[left.key] === true &&
@@ -234,26 +248,20 @@ export default function TradesTab({
                   meOwnedStickers[right.sectionCode]?.[String(right.stickerNumber)] !== true &&
                   requestNeededKeys[right.key] === true &&
                   (myIncoming[right.sectionCode]?.[String(right.stickerNumber)] ?? 0) === 0
-
-                const leftPriority = [
-                  leftNeed ? 0 : 1,
-                  left.sectionCode === 'FWC' ? 0 : 1,
-                  left.stickerNumber === 1 ? 0 : 1,
-                  -(left.count ?? 0),
-                ]
-                const rightPriority = [
-                  rightNeed ? 0 : 1,
-                  right.sectionCode === 'FWC' ? 0 : 1,
-                  right.stickerNumber === 1 ? 0 : 1,
-                  -(right.count ?? 0),
-                ]
-
-                for (let index = 0; index < leftPriority.length; index += 1) {
-                  if (leftPriority[index] !== rightPriority[index]) {
-                    return leftPriority[index] - rightPriority[index]
-                  }
+                if (leftNeed !== rightNeed) {
+                  return leftNeed ? -1 : 1
                 }
-                return 0
+                const leftFwc = left.sectionCode === 'FWC'
+                const rightFwc = right.sectionCode === 'FWC'
+                if (leftFwc !== rightFwc) {
+                  return leftFwc ? -1 : 1
+                }
+                const leftFig1 = left.stickerNumber === 1
+                const rightFig1 = right.stickerNumber === 1
+                if (leftFig1 !== rightFig1) {
+                  return leftFig1 ? -1 : 1
+                }
+                return (right.count ?? 0) - (left.count ?? 0)
               })
               .map((card) => {
               const selectedQuantity = selectedRequestCards[card.key] ?? 0
@@ -288,8 +296,13 @@ export default function TradesTab({
                       <button
                         type="button"
                         className="h-8 rounded-lg bg-zinc-800 text-lg text-zinc-100 active:scale-[0.98]"
-                        disabled={selectedQuantity <= 1}
-                        onClick={() => onUpdateRequestQuantity(card.key, selectedQuantity - 1)}
+                        onClick={() => {
+                          if (selectedQuantity <= 1) {
+                            onToggleRequestCard(card.key)
+                          } else {
+                            onUpdateRequestQuantity(card.key, selectedQuantity - 1)
+                          }
+                        }}
                       >
                         −
                       </button>
