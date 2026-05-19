@@ -64,6 +64,7 @@ function App() {
     activeTradePartner,
     activeTradePartnerStickers,
     filteredSections,
+    allSections,
     myTradeCards,
     partnerTradeCards,
     filteredMyTradeCards,
@@ -504,18 +505,51 @@ function App() {
                 inputMode="search"
               />
             </div>
-            <button
-              type="button"
-              className="grid h-12 w-12 place-items-center rounded-xl border border-zinc-800 bg-zinc-900 text-xl"
-            >
-              ↗
-            </button>
-            <button
-              type="button"
-              className="grid h-12 w-12 place-items-center rounded-xl border border-zinc-800 bg-zinc-900 text-xl"
-            >
-              ☰
-            </button>
+            {activeTab !== 'trades' ? (
+              <button
+                type="button"
+                className="grid h-12 w-12 place-items-center rounded-xl border border-zinc-800 bg-zinc-900 text-xl active:scale-[0.98]"
+                onClick={() => {
+                  const lines: string[] = []
+
+                  if (activeTab === 'album') {
+                    for (const section of allSections) {
+                      const ownedSet = selectedUserStickers[section.code] ?? {}
+                      const stickerNumbers = getStickerNumbers(section.code, section.stickerCount)
+                      const missing = stickerNumbers.filter((n) => ownedSet[String(n)] !== true)
+                      if (missing.length === 0) {
+                        continue
+                      }
+                      lines.push(
+                        `${section.flag} ${section.code}: ${missing.map((n) => formatStickerLabel(section.code, n)).join(', ')}`,
+                      )
+                    }
+                  } else {
+                    for (const section of allSections) {
+                      const sectionDups = selectedUserDuplicates[section.code]
+                      if (sectionDups == null) {
+                        continue
+                      }
+                      const entries = Object.entries(sectionDups)
+                        .filter(([, count]) => count > 0)
+                        .map(([key, count]) => {
+                          const num = Number.parseInt(key, 10)
+                          const label = formatStickerLabel(section.code, num)
+                          return count > 1 ? `${label}(${count})` : label
+                        })
+                      if (entries.length === 0) {
+                        continue
+                      }
+                      lines.push(`${section.flag} ${section.code}: ${entries.join(', ')}`)
+                    }
+                  }
+
+                  void navigator.clipboard.writeText(lines.join('\n'))
+                }}
+              >
+                📋
+              </button>
+            ) : null}
           </div>
         </section>
 
